@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { signInWithEmailAndPassword } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { useState } from "react";
 import {
   Alert,
@@ -20,6 +20,7 @@ export default function LoginScreen({ navigation }) {
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -29,30 +30,39 @@ export default function LoginScreen({ navigation }) {
 
     try {
       setLoading(true);
+      console.log("Attempting login with email:", email);
 
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
+      console.log("Authenticated user:", user.uid);
 
       const docRef = doc(db, "users", user.uid);
+      console.log("Accessing Firestore document: users/", user.uid);
       const docSnap = await getDoc(docRef);
 
       if (docSnap.exists()) {
         const data = docSnap.data();
         const role = data.role || "user";
-        console.log(`✅ Login as ${role}`);
-        navigation.replace("Main"); // 🎯 FIXED!
+        console.log(`User role: ${role}, Admin: ${role === "admin"}`);
       } else {
-        navigation.replace("Main");
+        console.log("User document does not exist, creating one for:", user.uid);
+        await setDoc(docRef, {
+          email: user.email,
+          role: "user", // Default role
+          createdAt: serverTimestamp(),
+        });
+        console.log("User document created with role: user");
       }
+
+      navigation.replace("Main");
     } catch (error) {
-      console.error(error);
+      console.error("Login error:", error);
       Alert.alert("Login Failed", error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // ✅ MISSING FUNCTION - ADD THIS!
   const handleForgotPassword = () => {
     if (!email) {
       Alert.alert("Enter Email", "Please enter your email to reset password.");
@@ -131,21 +141,96 @@ export default function LoginScreen({ navigation }) {
   );
 }
 
-// ✅ STYLES (UNCHANGED)
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: "center", backgroundColor: "#fff", paddingHorizontal: 25, marginTop: -50 },
-  textLogo: { width: 200, height: 70, alignSelf: "center", marginBottom: 10 },
-  clinicLogo: { width: 130, height: 130, alignSelf: "center", marginBottom: 25 },
-  title: { fontSize: 22, fontWeight: "bold", color: "#00BFA6", textAlign: "center", marginBottom: 25 },
-  inputContainer: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#ddd", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 15 },
-  input: { flex: 1, marginLeft: 10, fontSize: 15, color: "#333" },
-  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginVertical: 10 },
-  rememberMeContainer: { flexDirection: "row", alignItems: "center" },
-  rememberMeText: { marginLeft: 5, fontSize: 14, color: "#333" },
-  forgotPassword: { color: "#00BFA6", fontWeight: "500" },
-  loginButton: { backgroundColor: "#00BFA6", paddingVertical: 14, borderRadius: 30, marginTop: 20, alignItems: "center" },
-  loginText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
-  registerContainer: { flexDirection: "row", justifyContent: "center", marginTop: 25 },
-  registerText: { color: "#666", fontSize: 14 },
-  registerLink: { color: "#00BFA6", fontWeight: "bold", fontSize: 14 },
+  container: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    paddingVertical: 40,
+  },
+  textLogo: {
+    width: 160,
+    height: 60,
+    marginBottom: 10,
+  },
+  clinicLogo: {
+    width: 120,
+    height: 120,
+    marginBottom: 25,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: "bold",
+    color: "#00BFA6",
+    textAlign: "center",
+    marginBottom: 25,
+  },
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 15,
+    width: "85%",
+    maxWidth: 350,
+  },
+  input: {
+    flex: 1,
+    marginLeft: 10,
+    fontSize: 15,
+    color: "#333",
+  },
+  row: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    width: "85%",
+    maxWidth: 350,
+    marginVertical: 10,
+  },
+  rememberMeContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  rememberMeText: {
+    marginLeft: 5,
+    fontSize: 14,
+    color: "#333",
+  },
+  forgotPassword: {
+    color: "#00BFA6",
+    fontWeight: "500",
+  },
+  loginButton: {
+    backgroundColor: "#00BFA6",
+    paddingVertical: 14,
+    borderRadius: 30,
+    width: "85%",
+    maxWidth: 350,
+    alignItems: "center",
+    marginTop: 20,
+  },
+  loginText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  registerContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: 25,
+  },
+  registerText: {
+    color: "#666",
+    fontSize: 14,
+  },
+  registerLink: {
+    color: "#00BFA6",
+    fontWeight: "bold",
+    fontSize: 14,
+  },
 });

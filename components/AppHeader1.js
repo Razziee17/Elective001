@@ -6,16 +6,19 @@ export default function AppHeader({
   onProfilePress,
   onNotificationPress,
   onMenuPress,
+  isProfileScreen = false, // New prop to detect ProfileScreen
 }) {
   return (
     <View style={styles.headerContainer}>
-      {/* 👩‍🦰 Profile on the left */}
-      <TouchableOpacity onPress={onProfilePress}>
-        <Image
-          source={require("../assets/profile.jpg")}
-          style={styles.profileImage}
-        />
-      </TouchableOpacity>
+      {/* 👩‍🦰 Profile on the left, hidden when on ProfileScreen */}
+      {!isProfileScreen && (
+        <TouchableOpacity onPress={onProfilePress}>
+          <Image
+            source={require("../assets/profile.jpg")}
+            style={styles.profileImage}
+          />
+        </TouchableOpacity>
+      )}
 
       {/* 🟩 VetPlus logo in the center */}
       <Image

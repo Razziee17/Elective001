@@ -1,5 +1,14 @@
-import React, { useContext, useState } from "react";
 import {
+  collection,
+  doc,
+  onSnapshot,
+  query,
+  updateDoc,
+  where,
+} from "firebase/firestore";
+import React, { useContext, useEffect, useState } from "react";
+import {
+  Alert,
   Modal,
   ScrollView,
   StyleSheet,
@@ -8,20 +17,17 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import AppHeader from "../components/AppHeader";
-import { useAppointments } from "../context/AppointmentContext";
+import AppHeader from "../components/AppHeader1";
+import { useUser } from "../context/UserContext";
+import { db } from "../firebase";
+
 // 🧩 Example simple auth role context
-const UserContext = React.createContext({ role: "user" }); // default is user
+const UserContext = React.createContext({ role: "user" });
 
 export default function RecordsScreen() {
   const [activeTab, setActiveTab] = useState("Appointments");
-  const {
-    pendingAppointments,
-    approvedAppointments,
-    completedAppointments,
-    updateAppointmentStatus,
-  } = useAppointments();
-
+  const [appointments, setAppointments] = useState([]);
+  const { user } = useUser() || {};
   const { role } = useContext(UserContext); // "admin" or "user"
 
   const [prescriptionModal, setPrescriptionModal] = useState(false);
@@ -32,21 +38,61 @@ export default function RecordsScreen() {
     duration: "",
     notes: "",
   });
+
   const [menuVisible, setMenuVisible] = useState(false);
   const [notificationsVisible, setNotificationsVisible] = useState(false);
   const [profileVisible, setProfileVisible] = useState(false);
+
+  // ✅ LIVE FIRESTORE SYNC
+  useEffect(() => {
+    if (!user?.email) return;
+    const q =
+      role === "admin"
+        ? query(collection(db, "appointments"))
+        : query(collection(db, "appointments"), where("owner", "==", user.email));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setAppointments(data);
+    });
+    return unsubscribe;
+  }, [user?.email, role]);
+
+  // ✅ UPDATE STATUS OR PRESCRIPTION
+  const updateAppointmentStatus = async (id, status, extraData = {}) => {
+    try {
+      await updateDoc(doc(db, "appointments", id), {
+        status,
+        ...extraData,
+      });
+    } catch (e) {
+      Alert.alert("Error", "Failed to update appointment.");
+    }
+  };
+
   const handleComplete = (appt) => {
     setSelectedAppt(appt);
     setPrescriptionModal(true);
   };
 
-  const savePrescription = () => {
+  const savePrescription = async () => {
     if (!prescription.medicine || !prescription.dosage) {
       alert("Please fill in at least medicine name and dosage.");
       return;
     }
 
-    updateAppointmentStatus(selectedAppt.id, "completed", prescription);
+    await updateAppointmentStatus(selectedAppt.id, "completed", {
+      medication: {
+        medicine: prescription.medicine,
+        dosage: prescription.dosage,
+        duration: prescription.duration,
+        notes: prescription.notes,
+      },
+    });
+
     setPrescription({
       medicine: "",
       dosage: "",
@@ -56,9 +102,19 @@ export default function RecordsScreen() {
     setPrescriptionModal(false);
   };
 
+  // ✅ FILTERS for tabs
+  const pendingAppointments = appointments.filter(
+    (a) => a.status === "pending" || a.status === "approved"
+  );
+  const completedAppointments = appointments.filter(
+    (a) => a.status === "completed"
+  );
+  const declinedAppointments = appointments.filter(
+    (a) => a.status === "declined"
+  );
+
   const renderStatusButton = (appt) => {
     if (role !== "admin") {
-      // For normal user: show colored badge only
       return (
         <View
           style={[
@@ -69,7 +125,11 @@ export default function RecordsScreen() {
                   ? "#f0ad4e"
                   : appt.status === "approved"
                   ? "#5bc0de"
-                  : "#5cb85c",
+                  : appt.status === "completed"
+                  ? "#5cb85c"
+                  : appt.status === "declined"
+                  ? "#d9534f"
+                  : "#999",
             },
           ]}
         >
@@ -78,7 +138,7 @@ export default function RecordsScreen() {
       );
     }
 
-    // ✅ Admin can click to update
+    // ✅ Admin buttons
     return (
       <TouchableOpacity
         onPress={() => {
@@ -96,7 +156,11 @@ export default function RecordsScreen() {
                 ? "#f0ad4e"
                 : appt.status === "approved"
                 ? "#5bc0de"
-                : "#5cb85c",
+                : appt.status === "completed"
+                ? "#5cb85c"
+                : appt.status === "declined"
+                ? "#d9534f"
+                : "#999",
           },
         ]}
       >
@@ -112,18 +176,43 @@ export default function RecordsScreen() {
         <Text style={styles.details}>
           {appt.service} • {appt.date} • {appt.time}
         </Text>
-        {appt.prescription && (
+
+        {/* 🩺 Medication */}
+        {appt.medication && typeof appt.medication === "object" && (
           <View style={styles.medsBox}>
-            <Text style={styles.medsTitle}>Prescription:</Text>
-            <Text style={styles.medsItem}>💊 {appt.prescription.medicine}</Text>
+            <Text style={styles.medsTitle}>Medication:</Text>
             <Text style={styles.medsItem}>
-              📏 {appt.prescription.dosage} — {appt.prescription.duration}
+              💊 {appt.medication.medicine} ({appt.medication.dosage})
             </Text>
-            {appt.prescription.notes ? (
-              <Text style={styles.medsItem}>🗒️ {appt.prescription.notes}</Text>
+            {appt.medication.duration ? (
+              <Text style={styles.medsItem}>⏱ {appt.medication.duration}</Text>
+            ) : null}
+            {appt.medication.notes ? (
+              <Text style={styles.medsItem}>🗒️ {appt.medication.notes}</Text>
             ) : null}
           </View>
         )}
+
+        {/* ❌ Decline Notes */}
+        {appt.declineNotes ? (
+          <View style={styles.noteBox}>
+            <Text style={styles.noteTitle}>Decline Notes:</Text>
+            <Text style={styles.noteText}>{appt.declineNotes}</Text>
+          </View>
+        ) : null}
+
+        {/* 📅 Follow-Up */}
+        {appt.followUpDate || appt.followUpNotes ? (
+          <View style={styles.followUpBox}>
+            <Text style={styles.noteTitle}>Follow-Up:</Text>
+            {appt.followUpDate ? (
+              <Text style={styles.noteText}>📅 {appt.followUpDate}</Text>
+            ) : null}
+            {appt.followUpNotes ? (
+              <Text style={styles.noteText}>🗒️ {appt.followUpNotes}</Text>
+            ) : null}
+          </View>
+        ) : null}
       </View>
 
       {renderStatusButton(appt)}
@@ -132,7 +221,11 @@ export default function RecordsScreen() {
 
   const renderContent = () => {
     if (activeTab === "Appointments") {
-      const all = [...pendingAppointments, ...approvedAppointments];
+      const all = [
+        ...pendingAppointments,
+        ...declinedAppointments,
+        ...completedAppointments,
+      ];
       return all.length ? (
         all.map(renderAppointment)
       ) : (
@@ -147,8 +240,8 @@ export default function RecordsScreen() {
       );
     }
     if (activeTab === "History") {
-      return completedAppointments.length ? (
-        completedAppointments.map(renderAppointment)
+      return appointments.length ? (
+        appointments.map(renderAppointment)
       ) : (
         <Text style={styles.emptyText}>No History Yet</Text>
       );
@@ -157,105 +250,105 @@ export default function RecordsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: "#fff" }}>
-          <AppHeader
-            showIcons={true}
-            onProfilePress={() => setProfileVisible(true)}
-            onNotificationPress={() => setNotificationsVisible(true)}
-            onMenuPress={() => setMenuVisible(true)}
-          />
-      {/* rest of your code */}
-        <View style={styles.container}>
-          {/* Tabs */}
-          <View style={styles.tabContainer}>
-            {["Appointments", "Medication", "History"].map((tab) => (
-              <TouchableOpacity
-                key={tab}
+      <AppHeader
+        showIcons={true}
+        onProfilePress={() => setProfileVisible(true)}
+        onNotificationPress={() => setNotificationsVisible(true)}
+        onMenuPress={() => setMenuVisible(true)}
+      />
+
+      <View style={styles.container}>
+        {/* Tabs */}
+        <View style={styles.tabContainer}>
+          {["Appointments", "Medication", "History"].map((tab) => (
+            <TouchableOpacity
+              key={tab}
+              style={[
+                styles.tabButton,
+                activeTab === tab && styles.activeTabButton,
+              ]}
+              onPress={() => setActiveTab(tab)}
+            >
+              <Text
                 style={[
-                  styles.tabButton,
-                  activeTab === tab && styles.activeTabButton,
+                  styles.tabText,
+                  activeTab === tab && styles.activeTabText,
                 ]}
-                onPress={() => setActiveTab(tab)}
               >
-                <Text
-                  style={[
-                    styles.tabText,
-                    activeTab === tab && styles.activeTabText,
-                  ]}
-                >
-                  {tab}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+                {tab}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-          <ScrollView style={styles.scrollContainer}>{renderContent()}</ScrollView>
+        <ScrollView style={styles.scrollContainer}>{renderContent()}</ScrollView>
 
-          {/* 🧾 Prescription Modal (Admin only) */}
-          {role === "admin" && (
-            <Modal visible={prescriptionModal} transparent animationType="fade">
-              <View style={styles.modalOverlay}>
-                <View style={styles.modalBox}>
-                  <Text style={styles.modalTitle}>Add Prescription</Text>
+        {/* 🧾 Prescription Modal */}
+        {role === "admin" && (
+          <Modal visible={prescriptionModal} transparent animationType="fade">
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalBox}>
+                <Text style={styles.modalTitle}>Add Prescription</Text>
 
-                  <TextInput
-                    placeholder="Medicine Name"
-                    style={styles.input}
-                    value={prescription.medicine}
-                    onChangeText={(text) =>
-                      setPrescription((p) => ({ ...p, medicine: text }))
-                    }
-                  />
-                  <TextInput
-                    placeholder="Dosage (e.g., 2x a day)"
-                    style={styles.input}
-                    value={prescription.dosage}
-                    onChangeText={(text) =>
-                      setPrescription((p) => ({ ...p, dosage: text }))
-                    }
-                  />
-                  <TextInput
-                    placeholder="Duration (e.g., 5 days)"
-                    style={styles.input}
-                    value={prescription.duration}
-                    onChangeText={(text) =>
-                      setPrescription((p) => ({ ...p, duration: text }))
-                    }
-                  />
-                  <TextInput
-                    placeholder="Additional Notes"
-                    style={[styles.input, { height: 80 }]}
-                    multiline
-                    value={prescription.notes}
-                    onChangeText={(text) =>
-                      setPrescription((p) => ({ ...p, notes: text }))
-                    }
-                  />
+                <TextInput
+                  placeholder="Medicine Name"
+                  style={styles.input}
+                  value={prescription.medicine}
+                  onChangeText={(text) =>
+                    setPrescription((p) => ({ ...p, medicine: text }))
+                  }
+                />
+                <TextInput
+                  placeholder="Dosage (e.g., 2x a day)"
+                  style={styles.input}
+                  value={prescription.dosage}
+                  onChangeText={(text) =>
+                    setPrescription((p) => ({ ...p, dosage: text }))
+                  }
+                />
+                <TextInput
+                  placeholder="Duration (e.g., 5 days)"
+                  style={styles.input}
+                  value={prescription.duration}
+                  onChangeText={(text) =>
+                    setPrescription((p) => ({ ...p, duration: text }))
+                  }
+                />
+                <TextInput
+                  placeholder="Additional Notes"
+                  style={[styles.input, { height: 80 }]}
+                  multiline
+                  value={prescription.notes}
+                  onChangeText={(text) =>
+                    setPrescription((p) => ({ ...p, notes: text }))
+                  }
+                />
 
-                  <View style={styles.modalActions}>
-                    <TouchableOpacity
-                      style={styles.cancelButton}
-                      onPress={() => setPrescriptionModal(false)}
-                    >
-                      <Text style={{ color: "#555" }}>Cancel</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.saveButton}
-                      onPress={savePrescription}
-                    >
-                      <Text style={{ color: "#fff", fontWeight: "bold" }}>Save</Text>
-                    </TouchableOpacity>
-                  </View>
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={styles.cancelButton}
+                    onPress={() => setPrescriptionModal(false)}
+                  >
+                    <Text style={{ color: "#555" }}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.saveButton}
+                    onPress={savePrescription}
+                  >
+                    <Text style={{ color: "#fff", fontWeight: "bold" }}>Save</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
-            </Modal>
-          )}
-        </View>
+            </View>
+          </Modal>
+        )}
       </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff", paddingTop: 10, marginTop: -15},
+  container: { flex: 1, backgroundColor: "#fff", paddingTop: 10, marginTop: -15 },
   tabContainer: {
     flexDirection: "row",
     justifyContent: "space-around",
@@ -295,12 +388,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   statusText: { color: "#fff", fontWeight: "bold", fontSize: 13 },
-  emptyText: {
-    textAlign: "center",
-    color: "#aaa",
-    marginTop: 40,
-    fontSize: 16,
-  },
+  emptyText: { textAlign: "center", color: "#aaa", marginTop: 40, fontSize: 16 },
   medsBox: {
     marginTop: 8,
     backgroundColor: "#E8FFF9",
@@ -309,6 +397,20 @@ const styles = StyleSheet.create({
   },
   medsTitle: { fontWeight: "bold", color: "#00BFA6" },
   medsItem: { color: "#333", fontSize: 13, marginTop: 2 },
+  noteBox: {
+    backgroundColor: "#FFF4F4",
+    marginTop: 6,
+    padding: 8,
+    borderRadius: 10,
+  },
+  noteTitle: { fontWeight: "bold", color: "#d9534f" },
+  noteText: { color: "#333", fontSize: 13, marginTop: 2 },
+  followUpBox: {
+    backgroundColor: "#F0FAFF",
+    marginTop: 6,
+    padding: 8,
+    borderRadius: 10,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -334,10 +436,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     marginTop: 10,
   },
-  cancelButton: {
-    padding: 10,
-    marginRight: 10,
-  },
+  cancelButton: { padding: 10, marginRight: 10 },
   saveButton: {
     backgroundColor: "#00BFA6",
     paddingVertical: 10,

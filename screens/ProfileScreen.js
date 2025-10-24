@@ -10,7 +10,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import AppHeader from "../components/AppHeader";
 export default function ProfileScreen() {
   const [editVisible, setEditVisible] = useState(false);
   const [petModalVisible, setPetModalVisible] = useState(false);
@@ -79,12 +78,7 @@ export default function ProfileScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: "#fff" }}>
-          <AppHeader
-            showIcons={true}
-            onProfilePress={() => setProfileVisible(true)}
-            onNotificationPress={() => setNotificationsVisible(true)}
-            onMenuPress={() => setMenuVisible(true)}
-          />
+          
       {/* rest of your code */}
         <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
           {/* Header */}
