@@ -90,7 +90,7 @@ export default function ProfileScreen() {
           {/* Header */}
           <View style={styles.header}>
             <Image
-              source={require("../assets/profile.png")}
+              source={require("../assets/profile.jpg")}
               style={styles.profileImage}
             />
             <Text style={styles.userName}>{user.name}</Text>

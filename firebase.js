@@ -1,80 +1,17 @@
-    import { getAnalytics } from "firebase/analytics";
-import { initializeApp } from "firebase/app";
-import {
-    addDoc,
-    collection,
-    deleteDoc,
-    doc,
-    getFirestore,
-    onSnapshot,
-    orderBy,
-    query,
-    serverTimestamp,
-    updateDoc,
-} from "firebase/firestore";
+import { initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 
-    // Firebase configuration
-    const firebaseConfig = {
-        apiKey: "",
-        authDomain: "",
-        projectId: "",
-        storageBucket: "",
-        messagingSenderId: "",
-        appId: ""
-    };
+const firebaseConfig = {
+  apiKey: "AIzaSyAb8icpH4IFxVL-WoEAsjdeGH04m6iA2s4",
+  authDomain: "elective-c8d20.firebaseapp.com",
+  projectId: "elective-c8d20",
+  storageBucket: "elective-c8d20.firebasestorage.app",
+  messagingSenderId: "185216518681",
+  appId: "1:185216518681:web:b7ca12f37073436a9bf888",
+  measurementId: "G-ZD35TCTDK0"
+};
 
-    // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-    const analytics = getAnalytics(app);
-
-    // Initialize Firestore
-    const db = getFirestore(app);  // Initialize Firestore instance
-
-    // Reference to 'items' collection in Firestore
-    const itemsCol = collection(db, "items");
-
-    // Create a new item
-    export async function createItem(text) {
-    if (!text?.trim()) return;
-    try {
-        await addDoc(itemsCol, {
-        text: text.trim(),
-        done: false,
-        createdAt: serverTimestamp(),
-        createdAtMs: Date.now(),
-        });
-    } catch (error) {
-        console.error("Error adding item: ", error);
-    }
-    }
-
-    // Subscribe to items (listen to changes)
-    export function subscribeItems(cb) {
-    const q = query(itemsCol, orderBy("createdAtMs", "desc"));
-    return onSnapshot(
-        q,
-        (snap) => {
-        const rows = snap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
-        cb(rows);
-        },
-        (err) => console.error("subscribeItems error:", err)
-    );
-    }
-
-    // Update an item
-    export async function updateItem(id, data) {
-    try {
-        await updateDoc(doc(db, "items", id), data);
-    } catch (error) {
-        console.error("Error updating item: ", error);
-    }
-    }
-
-    // Delete an item
-    export async function deleteItem(id) {
-    try {
-        await deleteDoc(doc(db, "items", id));
-    } catch (error) {
-        console.error("Error deleting item: ", error);
-    }
-    }   
+export const auth = getAuth(app);
+export const db = getFirestore(app);

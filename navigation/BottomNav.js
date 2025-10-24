@@ -1,8 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { StyleSheet } from "react-native";
-
-// Import your screens
+import { onAuthStateChanged } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
+import { useEffect, useState } from "react";
+import { auth, db } from "../firebase";
+import AdminDashboard from "../screens/AdminDashboard";
 import AppointmentsScreen from "../screens/AppointmentsScreen";
 import HomeScreen from "../screens/HomeScreen";
 import ProfileScreen from "../screens/ProfileScreen";
@@ -11,93 +13,51 @@ import RecordsScreen from "../screens/RecordsScreen";
 const Tab = createBottomTabNavigator();
 
 export default function BottomNav() {
+  const [userRole, setUserRole] = useState("user");
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        const docSnap = await getDoc(doc(db, "users", user.uid));
+        if (docSnap.exists()) {
+          setUserRole(docSnap.data().role || "user");
+        }
+      }
+    });
+    return unsubscribe;
+  }, []);
+
   return (
     <Tab.Navigator
-      initialRouteName="Home"
       screenOptions={({ route }) => ({
-        headerShown: false,
-        tabBarShowLabel: true,
-        tabBarActiveTintColor: "#00BFA6",
-        tabBarInactiveTintColor: "#999",
-        tabBarLabelStyle: {
-          fontSize: 12,
-          marginBottom: 3,
-        },
-        tabBarStyle: {
-          height: 60,
-          marginBottom: 15,
-          paddingBottom: 6,
-          paddingTop: 6,
-          backgroundColor: "#fff",
-          borderTopWidth: 1,
-          borderTopColor: "#eee",
-          elevation: 8, // for Android shadow
-        },
-        tabBarIcon: ({ color, size, focused }) => {
+        tabBarIcon: ({ focused, color, size }) => {
           let iconName;
-
-          switch (route.name) {
-            case "Home":
-              iconName = focused ? "home" : "home-outline";
-              break;
-            case "Appointments":
-              iconName = focused ? "calendar" : "calendar-outline";
-              break;
-            case "Records":
-              iconName = focused ? "folder" : "folder-outline";
-              break;
-            case "Profile":
-              iconName = focused ? "person" : "person-outline";
-              break;
-            default:
-              iconName = "ellipse";
+          if (userRole === "admin") {
+            if (route.name === "AdminDashboard") iconName = focused ? "home" : "home-outline";
+          } else {
+            if (route.name === "Home") iconName = focused ? "home" : "home-outline";
+            else if (route.name === "Records") iconName = focused ? "folder" : "calendar-outline";
+            else if (route.name === "Appointments") iconName = focused ? "calendar" : "calendar-outline";
+            else if (route.name === "Profile") iconName = focused ? "person" : "person-outline";
           }
-
-          return <Ionicons name={iconName} size={22} color={color} />;
+          return <Ionicons name={iconName} size={size} color={color} />;
         },
+        tabBarActiveTintColor: "#00BFA6",
+        tabBarInactiveTintColor: "gray",
+        headerShown: false,
+        tabBarStyle: { backgroundColor: "#fff", borderTopColor: "#E0F7F4" },
       })}
     >
-      <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Appointments" component={AppointmentsScreen} />
-      <Tab.Screen name="Records" component={RecordsScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      {userRole === "admin" ? (
+        <Tab.Screen name="AdminDashboard" component={AdminDashboard} options={{ title: "Dashboard" }} />
+      ) : (
+        <>
+          <Tab.Screen name="Home" component={HomeScreen} options={{ title: "Home" }} />
+          <Tab.Screen name="Records" component={RecordsScreen} options={{ title: "Records" }} />
+          <Tab.Screen name="Appointments" component={AppointmentsScreen} options={{ title: "Appointments" }} />
+          <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: "Profile" }} />
+        </>
+      )}
     </Tab.Navigator>
   );
 }
-
-
-const styles = StyleSheet.create({
-  tabBar: {
-    position: "absolute",
-    bottom: 10,
-    left: 20,
-    right: 20,
-    elevation: 5,
-    backgroundColor: "#a4fcf0ff",
-    borderRadius: 25,
-    height: 70,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    marginBottom: 50,
-  },
-  plusButtonContainer: {
-    top: -25,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  plusButton: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: "#00BFA6",
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    elevation: 5,
-  },
-});

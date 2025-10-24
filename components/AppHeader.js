@@ -12,7 +12,7 @@ export default function AppHeader({
       {/* 👩‍🦰 Profile on the left */}
       <TouchableOpacity onPress={onProfilePress}>
         <Image
-          source={require("../assets/profile.png")}
+          source={require("../assets/profile.jpg")}
           style={styles.profileImage}
         />
       </TouchableOpacity>
