@@ -9,6 +9,9 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { auth, db } from "../firebase";               // <-- your src/firebase.js
+import { doc, setDoc } from "firebase/firestore";
 
 export default function RegisterScreen({ navigation }) {
   const [firstName, setFirstName] = useState("");
@@ -19,23 +22,65 @@ export default function RegisterScreen({ navigation }) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  const handleRegister = () => {
-    if (!firstName || !lastName || !email || !password || !confirmPassword) {
-      Alert.alert("Missing Info", "Please fill in all fields.");
-      return;
+  const handleRegister = async () => {
+  // ---- Basic validation -------------------------------------------------
+  if (!firstName || !lastName || !email || !password || !confirmPassword) {
+    Alert.alert("Missing Info", "Please fill in all fields.");
+    return;
+  }
+
+  if (password !== confirmPassword) {
+    Alert.alert("Password Mismatch", "Passwords do not match.");
+    return;
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    Alert.alert("Invalid Email", "Please enter a valid email address.");
+    return;
+  }
+
+  // ---- Firebase registration --------------------------------------------
+  try {
+    // 1. Create auth user
+    const userCredential = await createUserWithEmailAndPassword(
+      auth,
+      email,
+      password
+    );
+    const user = userCredential.user;
+
+    // 2. Save extra profile data to Firestore (collection "users")
+    await setDoc(doc(db, "users", user.uid), {
+      firstName,
+      lastName,
+      email: user.email,
+      createdAt: new Date().toISOString(),
+    });
+
+    Alert.alert("Success", "Account created! You can now log in.");
+    navigation.replace("Login"); // or "LoginScreen" if you named it differently
+  } catch (error) {
+    // ---- Friendly error messages ----------------------------------------
+    let msg = "Registration failed. Please try again.";
+
+    switch (error.code) {
+      case "auth/email-already-in-use":
+        msg = "This email is already registered.";
+        break;
+      case "auth/weak-password":
+        msg = "Password must be at least 6 characters.";
+        break;
+      case "auth/invalid-email":
+        msg = "Invalid email address.";
+        break;
+      default:
+        msg = error.message;
     }
 
-    if (password !== confirmPassword) {
-      Alert.alert("Password Mismatch", "Passwords do not match.");
-      return;
-    }
-
-    // ⚙️ Firebase Auth logic (for later):
-    // await createUserWithEmailAndPassword(auth, email, password);
-
-    Alert.alert("✅ Success", "Your account has been created!");
-    navigation.replace("Login");
-  };
+    Alert.alert("Error", msg);
+  }
+};
 
   return (
     <View style={styles.container}>
