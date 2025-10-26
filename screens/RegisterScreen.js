@@ -12,7 +12,7 @@ import {
   ScrollView,
   Platform,
 } from "react-native";
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import { createUserWithEmailAndPassword, sendEmailVerification } from "firebase/auth";
 import { auth, db } from "../firebase";
 import { doc, setDoc } from "firebase/firestore";
 
@@ -83,6 +83,9 @@ export default function RegisterScreen({ navigation }) {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
+      // Send email verification
+      await sendEmailVerification(user);
+        
       await setDoc(doc(db, "users", user.uid), {
         firstName,
         lastName,
@@ -95,14 +98,14 @@ export default function RegisterScreen({ navigation }) {
       let msg = "Registration failed. Please try again.";
       switch (error.code) {
         case "auth/email-already-in-use":
-          msg = "This email is already registered.";
-          break;
+          setEmailError("This email is already registered.");
+          return;
         case "auth/invalid-email":
-          msg = "Invalid email address.";
-          break;
+          setEmailError("Invalid email address.");
+          return;
         case "auth/weak-password":
-          msg = "Password is too weak.";
-          break;
+          setPasswordError("Password is too weak.");
+          return;
         default:
           msg = `Error: ${error.message}`;
       }
@@ -126,6 +129,9 @@ export default function RegisterScreen({ navigation }) {
           <View style={styles.modalContent}>
             <Ionicons name="checkmark-circle" size={30} color="#00BFA6" />
             <Text style={styles.modalText}>Registration Successful</Text>
+            <Text style={styles.modalSubText}>
+              Please check your email to verify your account.
+            </Text>
             <TouchableOpacity
               style={styles.modalButton}
               onPress={() => {
@@ -273,7 +279,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     width: "100%",
     height: "100%",
-    overflow: "hidden", // removes unwanted scrollbars
+    overflow: "hidden",
   },
   scrollContainer: {
     flexGrow: 1,
@@ -315,17 +321,17 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginBottom: 15,
     width: "100%",
-    outlineStyle: "none", // Removes blue outline (web)
-    transition: "border-color 0.2s ease", // smooth focus transition (web)
+    outlineStyle: "none",
+    transition: "border-color 0.2s ease",
   },
   input: {
     flex: 1,
     marginLeft: 10,
     fontSize: 15,
     color: "#333",
-     outlineStyle: "none",              // ❌ removes blue autofill/focus ring
-  backgroundColor: "transparent",    // ensures autofill doesn’t add blue fill
-  boxShadow: "0 0 0px 1000px #fff inset", // ✅ kills autofill blue overlay
+    outlineStyle: "none",
+    backgroundColor: "transparent",
+    boxShadow: "0 0 0px 1000px #fff inset",
   },
   nameRow: {
     flexDirection: "row",
@@ -391,6 +397,12 @@ const styles = StyleSheet.create({
     color: "#00BFA6",
     marginVertical: 10,
   },
+  modalSubText: {
+    fontSize: 14,
+    color: "#666",
+    textAlign: "center",
+    marginBottom: 15,
+  },
   modalButton: {
     backgroundColor: "#00BFA6",
     paddingVertical: 8,
@@ -402,5 +414,4 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "bold",
   },
-  
 });
