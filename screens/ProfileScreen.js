@@ -13,7 +13,7 @@ import {
   Platform,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy"; // ← LEGACY (no deprecation)
 import { getAuth, signOut } from "firebase/auth";
 import {
   doc,
@@ -37,17 +37,23 @@ export default function ProfileScreen() {
   const [selectedPet, setSelectedPet] = useState(null);
   const [isAddingPet, setIsAddingPet] = useState(false);
   const [successModalVisible, setSuccessModalVisible] = useState(false);
-  const navigation = useNavigation(); // ← FIXED: Removed <any>
+  const navigation = useNavigation();
 
   const [user, setUser] = useState({
-    name: "",
+    displayName: "",
     email: "",
     phone: "",
     address: "",
     profileImage: "",
   });
   const [pets, setPets] = useState([]);
-  const [tempUser, setTempUser] = useState(user);
+  const [tempUser, setTempUser] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    address: "",
+  });
   const [tempPet, setTempPet] = useState({
     name: "",
     age: "",
@@ -57,7 +63,6 @@ export default function ProfileScreen() {
   });
   const [image, setImage] = useState(null);
   const [largeImageVisible, setLargeImageVisible] = useState(false);
-
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [breedOpen, setBreedOpen] = useState(false);
 
@@ -92,7 +97,8 @@ export default function ProfileScreen() {
       try {
         const userDoc = await getDoc(doc(db, "users", userId));
         let userData = {
-          name: "",
+          firstName: "",
+          lastName: "",
           email: "",
           phone: "",
           address: "",
@@ -103,7 +109,8 @@ export default function ProfileScreen() {
           userData = userDoc.data();
         } else {
           const defaultUser = {
-            name: auth.currentUser.displayName || "User",
+            firstName: "User",
+            lastName: "",
             email: auth.currentUser.email || "",
             phone: "",
             address: "",
@@ -117,14 +124,24 @@ export default function ProfileScreen() {
           ? userData.phone.replace("+63", "0").replace(/(\d{4})(\d{3})(\d{4})/, "$1-$2-$3")
           : "";
 
+        const displayName = `${userData.firstName || ""} ${userData.lastName || ""}`.trim() || "User";
+
         const displayUser = {
-          ...userData,
+          displayName,
+          email: userData.email || "",
           phone: domesticPhone,
-          profileImage: userData.profileImage || "", // ← Never undefined
+          address: userData.address || "",
+          profileImage: userData.profileImage || "",
         };
 
         setUser(displayUser);
-        setTempUser(displayUser);
+        setTempUser({
+          firstName: userData.firstName || "",
+          lastName: userData.lastName || "",
+          email: userData.email || "",
+          phone: domesticPhone,
+          address: userData.address || "",
+        });
         setImage(userData.profileImage || null);
 
         const petsQuery = query(collection(db, "pets"), where("userId", "==", userId));
@@ -160,11 +177,13 @@ export default function ProfileScreen() {
     });
 
     if (!result.canceled) {
-      setImage(result.assets[0].uri);
+      const uri = result.assets[0].uri;
+      console.log("Picked image URI:", uri);
+      setImage(uri);
     }
   };
 
-  // Save Profile - FULLY FIXED
+  // Save Profile - FULLY FIXED UPLOAD
   const handleSaveProfile = async () => {
     const userId = auth.currentUser?.uid;
     if (!userId) return;
@@ -178,17 +197,27 @@ export default function ProfileScreen() {
     const internationalPhone = `+63${cleaned.substring(1)}`;
 
     try {
-      let profileImageUrl = tempUser.profileImage || "";
+      let profileImageUrl = user.profileImage || "";
 
-      // Upload new image if selected
-      if (image && image !== tempUser.profileImage) {
+      // UPLOAD IMAGE - FIXED: base64 → Blob without fetch()
+      if (image && image !== user.profileImage) {
+        console.log("Starting upload for:", image);
         try {
           const base64 = await FileSystem.readAsStringAsync(image, {
             encoding: FileSystem.EncodingType.Base64,
           });
 
-          const response = await fetch(`data:image/jpeg;base64,${base64}`);
-          const blob = await response.blob();
+          console.log("Base64 length:", base64?.length);
+
+          if (!base64) throw new Error("Failed to read image as base64");
+
+          // Convert base64 to Blob
+          const binary = atob(base64);
+          const array = [];
+          for (let i = 0; i < binary.length; i++) {
+            array.push(binary.charCodeAt(i));
+          }
+          const blob = new Blob([new Uint8Array(array)], { type: "image/jpeg" });
 
           const storageRef = ref(storage, `user-profile-images/${userId}/profile.jpg`);
           await uploadBytes(storageRef, blob);
@@ -198,27 +227,34 @@ export default function ProfileScreen() {
           setTimeout(() => setSuccessModalVisible(false), 800);
         } catch (uploadError) {
           console.error("Upload failed:", uploadError);
-          Alert.alert("Upload Failed", "Try a different image.");
+          Alert.alert("Upload Failed", uploadError.message || "Please try a smaller image.");
           return;
         }
       }
 
-      // Build safe update object - NO UNDEFINED
+      // SAVE TO FIRESTORE
       const updateData = {
-        name: tempUser.name || "",
-        email: tempUser.email || "",
+        firstName: tempUser.firstName.trim(),
+        lastName: tempUser.lastName.trim(),
+        email: tempUser.email.trim(),
         phone: internationalPhone,
-        address: tempUser.address || "",
-        profileImage: profileImageUrl, // ← Always a string
+        address: tempUser.address.trim(),
+        profileImage: profileImageUrl,
       };
 
       await setDoc(doc(db, "users", userId), updateData, { merge: true });
 
+      const displayName = `${updateData.firstName} ${updateData.lastName}`.trim();
+      const formattedPhone = internationalPhone.replace("+63", "0").replace(/(\d{4})(\d{3})(\d{4})/, "$1-$2-$3");
+
       setUser({
-        ...tempUser,
-        phone: tempUser.phone,
+        displayName,
+        email: updateData.email,
+        phone: formattedPhone,
+        address: updateData.address,
         profileImage: profileImageUrl,
       });
+
       setEditVisible(false);
       Alert.alert("Success", "Profile updated!");
     } catch (error) {
@@ -227,7 +263,7 @@ export default function ProfileScreen() {
     }
   };
 
-  // Pet Modals
+  // === PET FUNCTIONS (UNCHANGED) ===
   const openPetModal = (pet) => {
     setSelectedPet(pet);
     setTempPet({
@@ -320,7 +356,7 @@ export default function ProfileScreen() {
               onError={() => setImage(null)}
             />
           </TouchableOpacity>
-          <Text style={styles.userName}>{user.name || "User"}</Text>
+          <Text style={styles.userName}>{user.displayName}</Text>
           <TouchableOpacity style={styles.editButton} onPress={() => setEditVisible(true)}>
             <Ionicons name="create-outline" size={18} color="#00BFA6" />
             <Text style={styles.editText}>Edit Profile</Text>
@@ -394,11 +430,18 @@ export default function ProfileScreen() {
                   <Text style={styles.imagePickerText}>Change Picture</Text>
                 </TouchableOpacity>
 
-                <Text style={styles.label}>Full Name</Text>
+                <Text style={styles.label}>First Name</Text>
                 <TextInput
                   style={styles.input}
-                  value={tempUser.name}
-                  onChangeText={(t) => setTempUser({ ...tempUser, name: t })}
+                  value={tempUser.firstName}
+                  onChangeText={(t) => setTempUser({ ...tempUser, firstName: t })}
+                />
+
+                <Text style={styles.label}>Last Name</Text>
+                <TextInput
+                  style={styles.input}
+                  value={tempUser.lastName}
+                  onChangeText={(t) => setTempUser({ ...tempUser, lastName: t })}
                 />
 
                 <Text style={styles.label}>Email</Text>
@@ -590,6 +633,7 @@ export default function ProfileScreen() {
   );
 }
 
+// Styles (unchanged)
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff", paddingTop: 20 },
   header: { alignItems: "center", marginBottom: 20 },
