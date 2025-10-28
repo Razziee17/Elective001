@@ -1,25 +1,31 @@
-import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
 import {
-  Alert,
-  Image,
-  Modal,
+  Dimensions,
+  Platform,
   StyleSheet,
   Text,
-  TextInput,
-  TouchableOpacity,
   View,
   ScrollView,
-  Platform,
+  TextInput,
+  TouchableOpacity,
+  Image,
+  Modal,
+  Alert,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useState } from "react";
 import { createUserWithEmailAndPassword, sendEmailVerification } from "firebase/auth";
 import { auth, db } from "../firebase";
 import { doc, setDoc } from "firebase/firestore";
+
+const windowWidth = Dimensions.get("window").width;
+const windowHeight = Dimensions.get("window").height;
 
 export default function RegisterScreen({ navigation }) {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -27,17 +33,37 @@ export default function RegisterScreen({ navigation }) {
   const [passwordError, setPasswordError] = useState("");
   const [formError, setFormError] = useState("");
   const [emailError, setEmailError] = useState("");
+  const [phoneError, setPhoneError] = useState("");
   const [successModalVisible, setSuccessModalVisible] = useState(false);
 
+  // Validation Functions
   const validatePassword = (pass) => {
     const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{6,}$/;
     return passwordRegex.test(pass);
   };
 
   const validateEmail = (email) => {
-    const hasAtSymbol = email.includes("@");
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    return { hasAtSymbol, isValid: emailRegex.test(email) };
+    return emailRegex.test(email);
+  };
+
+  const validatePhone = (phone) => {
+    const cleaned = phone.replace(/\D/g, "");
+    return cleaned.length >= 10 && cleaned.length <= 15;
+  };
+
+  // Format phone as user types: (123) 456-7890
+  const formatPhone = (text) => {
+    const cleaned = text.replace(/\D/g, "").slice(0, 10);
+    if (cleaned.length <= 3) return cleaned;
+    if (cleaned.length <= 6) return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3)}`;
+    return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6)}`;
+  };
+
+  const handlePhoneChange = (text) => {
+    const formatted = formatPhone(text);
+    setPhone(formatted);
+    setPhoneError("");
   };
 
   const getPasswordMatchText = () => {
@@ -51,25 +77,38 @@ export default function RegisterScreen({ navigation }) {
       : styles.noMatchText;
   };
 
+  const getResponsiveWidth = (baseWidth) => (baseWidth / 400) * Math.min(windowWidth, 400);
+  const getResponsivePadding = (basePadding) => (basePadding / 400) * Math.min(windowWidth, 400);
+
   const handleRegister = async () => {
+    // Reset errors
     setFormError("");
     setEmailError("");
     setPasswordError("");
+    setPhoneError("");
 
-    if (!firstName || !lastName || !email || !password || !confirmPassword) {
-      setFormError("Need to fill all fields");
+    // Required fields
+    if (!firstName || !lastName || !email || !phone || !address || !password || !confirmPassword) {
+      setFormError("Please fill in all fields");
       return;
     }
 
-    const { hasAtSymbol, isValid } = validateEmail(email);
-    if (!hasAtSymbol || !isValid) {
+    // Email validation
+    if (!validateEmail(email)) {
       setEmailError("Please enter a valid email address");
       return;
     }
 
+    // Phone validation
+    if (!validatePhone(phone)) {
+      setPhoneError("Please enter a valid phone number (10 digits)");
+      return;
+    }
+
+    // Password validation
     if (!validatePassword(password)) {
       setPasswordError(
-        "Password must be at least 6 characters and include one uppercase letter, one number, and one special character (!@#$%^&*)."
+        "Password must be 6+ chars, with 1 uppercase, 1 number, 1 special char (!@#$%^&*)"
       );
       return;
     }
@@ -83,15 +122,17 @@ export default function RegisterScreen({ navigation }) {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      // Send email verification
       await sendEmailVerification(user);
-        
-      await setDoc(doc(db, "users", user.uid), {
-        firstName,
-        lastName,
-        email: user.email,
-        createdAt: new Date().toISOString(),
-      });
+
+      // Save full user profile
+     await setDoc(doc(db, "users", user.uid), {
+      firstName,
+      lastName,
+      email: user.email,
+      phone,
+      address,
+      createdAt: new Date().toLocaleString("en-US", { timeZone: "America/Los_Angeles" }),
+    });
 
       setSuccessModalVisible(true);
     } catch (error) {
@@ -99,17 +140,17 @@ export default function RegisterScreen({ navigation }) {
       switch (error.code) {
         case "auth/email-already-in-use":
           setEmailError("This email is already registered.");
-          return;
+          break;
         case "auth/invalid-email":
           setEmailError("Invalid email address.");
-          return;
+          break;
         case "auth/weak-password":
           setPasswordError("Password is too weak.");
-          return;
+          break;
         default:
           msg = `Error: ${error.message}`;
+          Alert.alert("Error", msg);
       }
-      Alert.alert("Error", msg);
     }
   };
 
@@ -127,8 +168,8 @@ export default function RegisterScreen({ navigation }) {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Ionicons name="checkmark-circle" size={30} color="#00BFA6" />
-            <Text style={styles.modalText}>Registration Successful</Text>
+            <Ionicons name="checkmark-circle" size={50} color="#00BFA6" />
+            <Text style={styles.modalText}>Registration Successful!</Text>
             <Text style={styles.modalSubText}>
               Please check your email to verify your account.
             </Text>
@@ -145,28 +186,30 @@ export default function RegisterScreen({ navigation }) {
         </View>
       </Modal>
 
-      {/* Scroll-safe centered layout */}
       <ScrollView
         contentContainerStyle={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.formContainer}>
+        <View style={[styles.formContainer, { width: getResponsiveWidth(360) }]}>
+          {/* Logo */}
           <Image
             source={require("../assets/logotext.png")}
-            style={styles.textLogo}
+            style={[styles.textLogo, { width: getResponsiveWidth(200), height: getResponsiveWidth(70) }]}
             resizeMode="contain"
           />
           <Image
             source={require("../assets/logo.png")}
-            style={styles.clinicLogo}
+            style={[styles.clinicLogo, { width: getResponsiveWidth(130), height: getResponsiveWidth(130) }]}
             resizeMode="contain"
           />
+
           <Text style={styles.title}>Register Account</Text>
 
           {formError ? <Text style={styles.errorText}>{formError}</Text> : null}
 
-          <View style={styles.nameRow}>
+          {/* Name Row */}
+          <View style={[styles.nameRow, { width: getResponsiveWidth(360) }]}>
             <View style={[styles.inputContainer, { flex: 1, marginRight: 8 }]}>
               <Ionicons name="person-outline" size={20} color="#00BFA6" />
               <TextInput
@@ -174,6 +217,7 @@ export default function RegisterScreen({ navigation }) {
                 placeholder="First Name"
                 value={firstName}
                 onChangeText={setFirstName}
+                autoCapitalize="words"
               />
             </View>
             <View style={[styles.inputContainer, { flex: 1 }]}>
@@ -183,11 +227,13 @@ export default function RegisterScreen({ navigation }) {
                 placeholder="Last Name"
                 value={lastName}
                 onChangeText={setLastName}
+                autoCapitalize="words"
               />
             </View>
           </View>
 
-          <View style={styles.inputContainer}>
+          {/* Email */}
+          <View style={[styles.inputContainer, { width: getResponsiveWidth(360) }]}>
             <Ionicons name="mail-outline" size={20} color="#00BFA6" />
             <TextInput
               style={styles.input}
@@ -203,7 +249,35 @@ export default function RegisterScreen({ navigation }) {
           </View>
           {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
 
-          <View style={styles.inputContainer}>
+          {/* Phone Number */}
+          <View style={[styles.inputContainer, { width: getResponsiveWidth(360) }]}>
+            <Ionicons name="call-outline" size={20} color="#00BFA6" />
+            <TextInput
+              style={styles.input}
+              placeholder="Phone Number"
+              value={phone}
+              onChangeText={handlePhoneChange}
+              keyboardType="phone-pad"
+              maxLength={15}
+            />
+          </View>
+          {phoneError ? <Text style={styles.errorText}>{phoneError}</Text> : null}
+
+          {/* Address */}
+          <View style={[styles.inputContainer, { width: getResponsiveWidth(360), minHeight: 60 }]}>
+            <Ionicons name="location-outline" size={20} color="#00BFA6" style={{ marginTop: 5 }} />
+            <TextInput
+              style={[styles.input, { minHeight: 50, textAlignVertical: "top" }]}
+              placeholder="Full Address"
+              value={address}
+              onChangeText={setAddress}
+              multiline
+              numberOfLines={2}
+            />
+          </View>
+
+          {/* Password */}
+          <View style={[styles.inputContainer, { width: getResponsiveWidth(360) }]}>
             <Ionicons name="lock-closed-outline" size={20} color="#00BFA6" />
             <TextInput
               style={styles.input}
@@ -215,7 +289,7 @@ export default function RegisterScreen({ navigation }) {
                 setPasswordError(
                   validatePassword(text)
                     ? ""
-                    : "Password must include one uppercase letter, one number, and one special character (!@#$%^&*)."
+                    : "6+ chars, 1 uppercase, 1 number, 1 special (!@#$%^&*)"
                 );
                 setFormError("");
               }}
@@ -230,7 +304,8 @@ export default function RegisterScreen({ navigation }) {
           </View>
           {passwordError ? <Text style={styles.errorText}>{passwordError}</Text> : null}
 
-          <View style={styles.inputContainer}>
+          {/* Confirm Password */}
+          <View style={[styles.inputContainer, { width: getResponsiveWidth(360) }]}>
             <Ionicons name="lock-closed-outline" size={20} color="#00BFA6" />
             <TextInput
               style={styles.input}
@@ -251,14 +326,23 @@ export default function RegisterScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
+          {/* Password Match Indicator */}
           {getPasswordMatchText() && (
             <Text style={getPasswordMatchStyle()}>{getPasswordMatchText()}</Text>
           )}
 
-          <TouchableOpacity style={styles.registerButton} onPress={handleRegister}>
+          {/* Register Button */}
+          <TouchableOpacity
+            style={[
+              styles.registerButton,
+              { width: getResponsiveWidth(360), paddingVertical: getResponsivePadding(14) },
+            ]}
+            onPress={handleRegister}
+          >
             <Text style={styles.registerText}>Register</Text>
           </TouchableOpacity>
 
+          {/* Login Link */}
           <View style={styles.loginContainer}>
             <Text style={styles.loginText}>Already have an account?</Text>
             <TouchableOpacity onPress={() => navigation.navigate("Login")}>
@@ -271,36 +355,29 @@ export default function RegisterScreen({ navigation }) {
   );
 }
 
+// Styles (unchanged, just cleaned up)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#fff",
     justifyContent: "center",
     alignItems: "center",
-    width: "100%",
-    height: "100%",
-    overflow: "hidden",
   },
   scrollContainer: {
     flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
-    width: "100%",
+    paddingVertical: 20,
   },
   formContainer: {
-    width: "90%",
-    maxWidth: 400,
     alignItems: "center",
+    paddingHorizontal: 20,
   },
   textLogo: {
-    width: 200,
-    height: 70,
     alignSelf: "center",
     marginBottom: 10,
   },
   clinicLogo: {
-    width: 130,
-    height: 130,
     alignSelf: "center",
     marginBottom: 25,
   },
@@ -320,57 +397,67 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     marginBottom: 15,
-    width: "100%",
-    outlineStyle: "none",
-    transition: "border-color 0.2s ease",
+    backgroundColor: "#fff",
+      overflow: "hidden",
   },
   input: {
     flex: 1,
     marginLeft: 10,
     fontSize: 15,
     color: "#333",
+    borderWidth: 0, 
     outlineStyle: "none",
-    backgroundColor: "transparent",
-    boxShadow: "0 0 0px 1000px #fff inset",
+    padding: 0,
   },
   nameRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    width: "100%",
   },
   registerButton: {
     backgroundColor: "#00BFA6",
-    paddingVertical: 14,
     borderRadius: 30,
     marginTop: 20,
     alignItems: "center",
-    width: "100%",
   },
-  registerText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
+  registerText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
   loginContainer: {
     flexDirection: "row",
     justifyContent: "center",
     marginTop: 25,
   },
-  loginText: { color: "#666", fontSize: 14 },
-  loginLink: { color: "#00BFA6", fontWeight: "bold", fontSize: 14 },
+  loginText: {
+    color: "#666",
+    fontSize: 14,
+  },
+  loginLink: {
+    color: "#00BFA6",
+    fontWeight: "bold",
+    fontSize: 14,
+  },
   errorText: {
     color: "red",
     fontSize: 12,
     marginBottom: 10,
     alignSelf: "flex-start",
+    marginLeft: 5,
   },
   matchText: {
     color: "green",
     fontSize: 12,
     marginBottom: 10,
     alignSelf: "flex-start",
+    marginLeft: 5,
   },
   noMatchText: {
     color: "red",
     fontSize: 12,
     marginBottom: 10,
     alignSelf: "flex-start",
+    marginLeft: 5,
   },
   modalOverlay: {
     flex: 1,
@@ -380,19 +467,19 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: "#fff",
-    padding: 20,
-    borderRadius: 10,
+    padding: 25,
+    borderRadius: 15,
     alignItems: "center",
-    width: "80%",
-    maxWidth: 300,
-    elevation: 5,
+    width: "85%",
+    maxWidth: 320,
+    elevation: 10,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 4,
   },
   modalText: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "bold",
     color: "#00BFA6",
     marginVertical: 10,
@@ -401,17 +488,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#666",
     textAlign: "center",
-    marginBottom: 15,
+    marginBottom: 20,
+    lineHeight: 20,
   },
   modalButton: {
     backgroundColor: "#00BFA6",
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 30,
+    borderRadius: 25,
   },
   modalButtonText: {
     color: "#fff",
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "bold",
   },
 });

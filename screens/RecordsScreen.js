@@ -250,13 +250,6 @@ export default function RecordsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: "#fff" }}>
-      <AppHeader
-        showIcons={true}
-        onProfilePress={() => setProfileVisible(true)}
-        onNotificationPress={() => setNotificationsVisible(true)}
-        onMenuPress={() => setMenuVisible(true)}
-      />
-
       <View style={styles.container}>
         {/* Tabs */}
         <View style={styles.tabContainer}>

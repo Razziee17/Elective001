@@ -1,38 +1,104 @@
+import React, { useState, useRef } from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Image,
+  StyleSheet,
+  Animated,
+  Easing,
+  Dimensions,
+  TouchableWithoutFeedback,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Image, StyleSheet, TouchableOpacity, View } from "react-native";
+
+const { width, height } = Dimensions.get("window");
 
 export default function HomeHeader({
   onProfilePress,
   onNotificationPress,
-  onMenuPress,
   isProfileScreen = false,
 }) {
+  const [menuVisible, setMenuVisible] = useState(false);
+  const slideAnim = useRef(new Animated.Value(100)).current; // for slide-in animation
+
+  const toggleMenu = () => {
+    if (menuVisible) {
+      Animated.timing(slideAnim, {
+        toValue: 100,
+        duration: 200,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }).start(() => setMenuVisible(false));
+    } else {
+      setMenuVisible(true);
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 250,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }).start();
+    }
+  };
+
   return (
-    <View style={styles.headerContainer}>
-      {!isProfileScreen && (
-        <TouchableOpacity onPress={onProfilePress}>
-          <Image
-            source={require("../assets/profile.jpg")}
-            style={styles.profileImage}
-          />
-        </TouchableOpacity>
-      )}
+    <>
+      <View style={styles.headerContainer}>
+        {!isProfileScreen && (
+          <TouchableOpacity onPress={onProfilePress}>
+            <Image
+              source={require("../assets/profile.jpg")}
+              style={styles.profileImage}
+            />
+          </TouchableOpacity>
+        )}
 
-      <Image
-        source={require("../assets/logotext.png")}
-        style={styles.logo}
-        resizeMode="contain"
-      />
+        <Image
+          source={require("../assets/logotext.png")}
+          style={styles.logo}
+          resizeMode="contain"
+        />
 
-      <View style={styles.rightIcons}>
-        <TouchableOpacity onPress={onNotificationPress} style={styles.iconBtn}>
-          <Ionicons name="notifications-outline" size={24} color="#00BFA6" />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={onMenuPress} style={styles.iconBtn}>
-          <Ionicons name="menu-outline" size={26} color="#00BFA6" />
-        </TouchableOpacity>
+        <View style={styles.rightIcons}>
+          <TouchableOpacity onPress={onNotificationPress} style={styles.iconBtn}>
+            <Ionicons name="notifications-outline" size={24} color="#00BFA6" />
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={toggleMenu} style={styles.iconBtn}>
+            <Ionicons name="menu-outline" size={26} color="#00BFA6" />
+          </TouchableOpacity>
+        </View>
       </View>
-    </View>
+
+      {/* Full-screen overlay and side menu */}
+      {menuVisible && (
+        <View style={StyleSheet.absoluteFill}>
+          <TouchableWithoutFeedback onPress={toggleMenu}>
+            <View style={styles.overlay} />
+          </TouchableWithoutFeedback>
+
+          <Animated.View
+            style={[
+              styles.menuContainer,
+              { transform: [{ translateX: slideAnim }] },
+            ]}
+          >
+            {["About Us", "Contact Us", "Logout"].map((item, index) => (
+              <TouchableOpacity
+                key={index}
+                style={styles.menuItem}
+                onPress={() => {
+                  console.log(item);
+                  toggleMenu();
+                }}
+              >
+                <Text style={styles.menuText}>{item}</Text>
+              </TouchableOpacity>
+            ))}
+          </Animated.View>
+        </View>
+      )}
+    </>
   );
 }
 
@@ -65,5 +131,33 @@ const styles = StyleSheet.create({
   },
   iconBtn: {
     marginLeft: 12,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  menuContainer: {
+    position: "absolute",
+    top: 100,
+    right: 20,
+    width: width * 0.5,
+    backgroundColor: "#fff",
+    borderRadius: 15,
+    paddingVertical: 20,
+    alignItems: "center",
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+  },
+  menuItem: {
+    paddingVertical: 15,
+    width: "100%",
+    alignItems: "center",
+  },
+  menuText: {
+    fontSize: 18,
+    color: "#333",
+    fontWeight: "500",
   },
 });
