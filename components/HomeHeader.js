@@ -154,7 +154,7 @@ const styles = StyleSheet.create({
   },
   menuContainer: {
     position: "absolute",
-    backgroundColor: "#fff",
+    backgroundColor: "#fff", 
     borderRadius: 12,
     paddingVertical: 10,
     width: width * 0.45,
