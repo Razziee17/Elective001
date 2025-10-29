@@ -4,10 +4,12 @@ import { AppointmentProvider } from "./context/AppointmentContext";
 import { UserProvider } from "./context/UserContext";
 import BottomNav from "./navigation/BottomNav";
 import { navigationRef } from "./navigationService"; // ✅ Import global ref
-import LoginScreen from "./screens/LoginScreen";
-import WelcomeScreen from "./screens/WelcomeScreen";
-import RegisterScreen from "./screens/RegisterScreen";
+import AboutUs from "./screens/AboutUs";
+import ContactUs from "./screens/ContactUs";
 import ForgotPasswordScreen from "./screens/ForgotPasswordScreen";
+import LoginScreen from "./screens/LoginScreen";
+import RegisterScreen from "./screens/RegisterScreen";
+import WelcomeScreen from "./screens/WelcomeScreen";
 const Stack = createStackNavigator();
 
 export default function App() {
@@ -26,6 +28,10 @@ export default function App() {
             <Stack.Screen name="Register" component={RegisterScreen} options={{ headerShown: false }}/>
             {/* forgotpassword */}
           <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} options={{ headerShown: false }}/>
+          {/* About US*/}
+          <Stack.Screen name="AboutUs" component={AboutUs} />
+          {/*Contact US */}
+          <Stack.Screen name="ContactUs" component={ContactUs} />
           </Stack.Navigator>
         </NavigationContainer>
       </AppointmentProvider>

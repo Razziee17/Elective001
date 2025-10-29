@@ -1,48 +1,51 @@
-import React, { useState, useRef } from "react";
+import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
+import { useRef, useState } from "react";
 import {
-  View,
-  Text,
-  TouchableOpacity,
+  Dimensions,
   Image,
   StyleSheet,
-  Animated,
-  Easing,
-  Dimensions,
+  Text,
+  TouchableOpacity,
   TouchableWithoutFeedback,
+  View
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 
-const { width, height } = Dimensions.get("window");
+const { width } = Dimensions.get("window");
 
 export default function HomeHeader({
   onProfilePress,
   onNotificationPress,
   isProfileScreen = false,
 }) {
+  const navigation = useNavigation();
   const [menuVisible, setMenuVisible] = useState(false);
-  const slideAnim = useRef(new Animated.Value(100)).current; // for slide-in animation
+  const [menuPosition, setMenuPosition] = useState({ top: 0, right: 20 });
+  const menuButtonRef = useRef(null);
 
+  // Measure hamburger icon position to drop menu under it
   const toggleMenu = () => {
-    if (menuVisible) {
-      Animated.timing(slideAnim, {
-        toValue: 100,
-        duration: 200,
-        easing: Easing.out(Easing.ease),
-        useNativeDriver: true,
-      }).start(() => setMenuVisible(false));
+    if (!menuVisible) {
+      menuButtonRef.current?.measureInWindow((x, y, w, h) => {
+        setMenuPosition({ top: y + h + 8, right: width - (x + w) });
+        setMenuVisible(true);
+      });
     } else {
-      setMenuVisible(true);
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 250,
-        easing: Easing.out(Easing.ease),
-        useNativeDriver: true,
-      }).start();
+      setMenuVisible(false);
     }
+  };
+
+  const handleNavigation = (route) => {
+    setMenuVisible(false);
+    setTimeout(() => {
+      if (route === "Logout") navigation.navigate("Login");
+      else navigation.navigate(route);
+    }, 200);
   };
 
   return (
     <>
+      {/* Header */}
       <View style={styles.headerContainer}>
         {!isProfileScreen && (
           <TouchableOpacity onPress={onProfilePress}>
@@ -64,39 +67,51 @@ export default function HomeHeader({
             <Ionicons name="notifications-outline" size={24} color="#00BFA6" />
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={toggleMenu} style={styles.iconBtn}>
+          <TouchableOpacity
+            ref={menuButtonRef}
+            onPress={toggleMenu}
+            style={styles.iconBtn}
+          >
             <Ionicons name="menu-outline" size={26} color="#00BFA6" />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Full-screen overlay and side menu */}
+      {/* Fullscreen dark overlay + dropdown under icon */}
       {menuVisible && (
-        <View style={StyleSheet.absoluteFill}>
-          <TouchableWithoutFeedback onPress={toggleMenu}>
-            <View style={styles.overlay} />
-          </TouchableWithoutFeedback>
-
-          <Animated.View
-            style={[
-              styles.menuContainer,
-              { transform: [{ translateX: slideAnim }] },
-            ]}
-          >
-            {["About Us", "Contact Us", "Logout"].map((item, index) => (
-              <TouchableOpacity
-                key={index}
-                style={styles.menuItem}
-                onPress={() => {
-                  console.log(item);
-                  toggleMenu();
-                }}
-              >
-                <Text style={styles.menuText}>{item}</Text>
-              </TouchableOpacity>
-            ))}
-          </Animated.View>
-        </View>
+        <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>
+          <View style={styles.overlay}>
+            <View style={[styles.menuContainer, { top: menuPosition.top, right: menuPosition.right }]}>
+              {[
+                { name: "About Us", route: "AboutUs" },
+                { name: "Contact Us", route: "ContactUs" },
+                { name: "FAQ", route: "FAQ" },
+                { name: "Logout", route: "Logout" },
+              ].map((item, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={[
+                    styles.menuItem,
+                    item.name === "Logout" && {
+                      borderTopWidth: 1,
+                      borderTopColor: "#eee",
+                    },
+                  ]}
+                  onPress={() => handleNavigation(item.route)}
+                >
+                  <Text
+                    style={[
+                      styles.menuText,
+                      item.name === "Logout" && { color: "red" },
+                    ]}
+                  >
+                    {item.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </TouchableWithoutFeedback>
       )}
     </>
   );
@@ -134,30 +149,28 @@ const styles = StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(0,0,0,0.6)", // Dark transparent full-screen background
+    zIndex: 10,
   },
   menuContainer: {
     position: "absolute",
-    top: 100,
-    right: 20,
-    width: width * 0.5,
     backgroundColor: "#fff",
-    borderRadius: 15,
-    paddingVertical: 20,
-    alignItems: "center",
+    borderRadius: 12,
+    paddingVertical: 10,
+    width: width * 0.45,
     elevation: 8,
     shadowColor: "#000",
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.3,
     shadowRadius: 8,
+    alignItems: "center",
   },
   menuItem: {
-    paddingVertical: 15,
+    paddingVertical: 14,
     width: "100%",
     alignItems: "center",
   },
   menuText: {
-    fontSize: 18,
+    fontSize: 16,
     color: "#333",
-    fontWeight: "500",
   },
 });

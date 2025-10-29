@@ -90,10 +90,10 @@ export default function AdminReportsScreen() {
 
   return (
     <ScrollView style={styles.container}>
-      <View style={styles.header}>
+      {/* <View style={styles.header}>
         <Text style={styles.logo}>VetPlus | Animal Clinic</Text>
         
-      </View>
+      </View> */}
 
       <View style={styles.content}>
         <Text style={styles.title}>Reports</Text>
