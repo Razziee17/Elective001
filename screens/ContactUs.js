@@ -215,7 +215,7 @@ export default function ContactUs() {
             {/* Hours */}
             <View style={styles.contactRow}>
               <Ionicons name="time-outline" size={20} color="#00BFA6" />
-              <Text style={styles.contactText}>Daily, 9am to 7:00pm</Text>
+              <Text style={styles.contactText}>Daily, 8am to 4:00pm</Text>
             </View>
 
             
