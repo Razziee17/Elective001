@@ -13,7 +13,7 @@ import {
   Platform,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
-import * as FileSystem from "expo-file-system/legacy"; // ← LEGACY (no deprecation)
+import * as FileSystem from "expo-file-system/legacy";
 import { getAuth, signOut } from "firebase/auth";
 import {
   doc,
@@ -30,6 +30,17 @@ import {
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useNavigation } from "@react-navigation/native";
 import { auth, db, storage } from "../firebase";
+// utils/petUtils.js
+export const formatPetAge = (pet) => {
+  if (!pet?.age) return "Unknown age";
+  const age = Number(pet.age);
+  const unit = pet.ageUnit || "years";
+  const singular = age === 1;
+  const label = singular
+    ? (unit === "years" ? "year old" : "month old")
+    : (unit === "years" ? "years old" : "months old");
+  return `${age} ${label}`;
+};
 
 export default function ProfileScreen() {
   const [editVisible, setEditVisible] = useState(false);
@@ -47,6 +58,8 @@ export default function ProfileScreen() {
     profileImage: "",
   });
   const [pets, setPets] = useState([]);
+  const [recentPetId, setRecentPetId] = useState(null); // Track recently added
+
   const [tempUser, setTempUser] = useState({
     firstName: "",
     lastName: "",
@@ -57,6 +70,7 @@ export default function ProfileScreen() {
   const [tempPet, setTempPet] = useState({
     name: "",
     age: "",
+    ageUnit: "years", // NEW
     categories: "",
     breed: "",
     gender: "Male",
@@ -146,7 +160,8 @@ export default function ProfileScreen() {
 
         const petsQuery = query(collection(db, "pets"), where("userId", "==", userId));
         const snapshot = await getDocs(petsQuery);
-        setPets(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
+        const loadedPets = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setPets(loadedPets);
       } catch (error) {
         console.error("Fetch error:", error);
         Alert.alert("Error", "Failed to load data.");
@@ -178,12 +193,11 @@ export default function ProfileScreen() {
 
     if (!result.canceled) {
       const uri = result.assets[0].uri;
-      console.log("Picked image URI:", uri);
       setImage(uri);
     }
   };
 
-  // Save Profile - FULLY FIXED UPLOAD
+  // Save Profile
   const handleSaveProfile = async () => {
     const userId = auth.currentUser?.uid;
     if (!userId) return;
@@ -199,40 +213,28 @@ export default function ProfileScreen() {
     try {
       let profileImageUrl = user.profileImage || "";
 
-      // UPLOAD IMAGE - FIXED: base64 → Blob without fetch()
       if (image && image !== user.profileImage) {
-        console.log("Starting upload for:", image);
-        try {
-          const base64 = await FileSystem.readAsStringAsync(image, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
+        const base64 = await FileSystem.readAsStringAsync(image, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
 
-          console.log("Base64 length:", base64?.length);
+        if (!base64) throw new Error("Failed to read image");
 
-          if (!base64) throw new Error("Failed to read image as base64");
-
-          // Convert base64 to Blob
-          const binary = atob(base64);
-          const array = [];
-          for (let i = 0; i < binary.length; i++) {
-            array.push(binary.charCodeAt(i));
-          }
-          const blob = new Blob([new Uint8Array(array)], { type: "image/jpeg" });
-
-          const storageRef = ref(storage, `user-profile-images/${userId}/profile.jpg`);
-          await uploadBytes(storageRef, blob);
-          profileImageUrl = await getDownloadURL(storageRef);
-
-          setSuccessModalVisible(true);
-          setTimeout(() => setSuccessModalVisible(false), 800);
-        } catch (uploadError) {
-          console.error("Upload failed:", uploadError);
-          Alert.alert("Upload Failed", uploadError.message || "Please try a smaller image.");
-          return;
+        const binary = atob(base64);
+        const array = [];
+        for (let i = 0; i < binary.length; i++) {
+          array.push(binary.charCodeAt(i));
         }
+        const blob = new Blob([new Uint8Array(array)], { type: "image/jpeg" });
+
+        const storageRef = ref(storage, `user-profile-images/${userId}/profile.jpg`);
+        await uploadBytes(storageRef, blob);
+        profileImageUrl = await getDownloadURL(storageRef);
+
+        setSuccessModalVisible(true);
+        setTimeout(() => setSuccessModalVisible(false), 800);
       }
 
-      // SAVE TO FIRESTORE
       const updateData = {
         firstName: tempUser.firstName.trim(),
         lastName: tempUser.lastName.trim(),
@@ -263,12 +265,13 @@ export default function ProfileScreen() {
     }
   };
 
-  // === PET FUNCTIONS (UNCHANGED) ===
+  // === PET FUNCTIONS ===
   const openPetModal = (pet) => {
     setSelectedPet(pet);
     setTempPet({
       name: pet.name || "",
-      age: pet.age || "",
+      age: pet.age?.toString() || "",
+      ageUnit: pet.ageUnit || "years",
       categories: pet.categories || "",
       breed: pet.breed || "",
       gender: pet.gender || "Male",
@@ -280,7 +283,7 @@ export default function ProfileScreen() {
   };
 
   const openAddPetModal = () => {
-    setTempPet({ name: "", age: "", categories: "", breed: "", gender: "Male" });
+    setTempPet({ name: "", age: "", ageUnit: "years", categories: "", breed: "", gender: "Male" });
     setSelectedPet(null);
     setIsAddingPet(true);
     setPetModalVisible(true);
@@ -297,16 +300,34 @@ export default function ProfileScreen() {
     const userId = auth.currentUser?.uid;
     if (!userId) return;
 
+    const ageNum = parseInt(tempPet.age, 10);
+    if (isNaN(ageNum) || ageNum <= 0 || ageNum > 99) {
+      Alert.alert("Error", "Age must be 1–99.");
+      return;
+    }
+
+    const petData = {
+      name: tempPet.name.trim(),
+      age: ageNum,
+      ageUnit: tempPet.ageUnit,
+      categories: tempPet.categories,
+      breed: tempPet.breed,
+      gender: tempPet.gender,
+      userId,
+    };
+
     try {
       if (isAddingPet) {
-        const newPet = { ...tempPet, userId };
-        const docRef = await addDoc(collection(db, "pets"), newPet);
-        setPets((prev) => [...prev, { id: docRef.id, ...newPet }]);
+        const docRef = await addDoc(collection(db, "pets"), petData);
+        const newPet = { id: docRef.id, ...petData };
+        setPets((prev) => [...prev, newPet]);
+        setRecentPetId(docRef.id); // Mark as recent
+        setTimeout(() => setRecentPetId(null), 5000); // Clear after 5s
       } else {
         const petRef = doc(db, "pets", selectedPet.id);
-        await updateDoc(petRef, tempPet);
+        await updateDoc(petRef, petData);
         setPets((prev) =>
-          prev.map((p) => (p.id === selectedPet.id ? { ...p, ...tempPet } : p))
+          prev.map((p) => (p.id === selectedPet.id ? { ...p, ...petData } : p))
         );
       }
       setPetModalVisible(false);
@@ -388,28 +409,41 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.petContainer}>
-          {pets.map((pet) => (
-            <View key={pet.id} style={styles.petCardContainer}>
-              <TouchableOpacity style={styles.petCard} onPress={() => openPetModal(pet)}>
-                <Ionicons
-                  name={pet.categories === "Dog" ? "paw-outline" : "logo-octocat"}
-                  size={24}
-                  color="#00BFA6"
-                  style={{ marginRight: 10 }}
-                />
-                <View style={styles.petDetails}>
-                  <Text style={styles.petName}>{pet.name}</Text>
-                  <Text style={styles.petInfo}>Age: {pet.age}</Text>
-                  <Text style={styles.petInfo}>Category: {pet.categories}</Text>
-                  <Text style={styles.petInfo}>Breed: {pet.breed}</Text>
-                  <Text style={styles.petInfo}>Gender: {pet.gender}</Text>
-                </View>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeletePet(pet.id)}>
-                <Ionicons name="trash-outline" size={20} color="#FF4C4C" />
-              </TouchableOpacity>
-            </View>
-          ))}
+          {pets.length === 0 ? (
+            <Text style={styles.noPetsText}>No pets yet. Tap + to add one!</Text>
+          ) : (
+            pets.map((pet) => (
+              <View key={pet.id} style={styles.petCardContainer}>
+                <TouchableOpacity style={styles.petCard} onPress={() => openPetModal(pet)}>
+                  <Ionicons
+                    name={pet.categories === "Dog" ? "paw-outline" : "logo-octocat"}
+                    size={24}
+                    color="#00BFA6"
+                    style={{ marginRight: 10 }}
+                  />
+                  <View style={styles.petDetails}>
+                    <View style={styles.petNameRow}>
+                      <Text style={styles.petName}>{pet.name}</Text>
+                      {recentPetId === pet.id && (
+                        <View style={styles.recentBadge}>
+                          <Text style={styles.recentText}>Recently Added</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.petInfo}>
+                      Age: {pet.age} {pet.age === 1 ? (pet.ageUnit === "years" ? "year" : "month") : (pet.ageUnit === "years" ? "years" : "months")} old
+                    </Text>
+                    <Text style={styles.petInfo}>Category: {pet.categories}</Text>
+                    <Text style={styles.petInfo}>Breed: {pet.breed}</Text>
+                    <Text style={styles.petInfo}>Gender: {pet.gender}</Text>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeletePet(pet.id)}>
+                  <Ionicons name="trash-outline" size={20} color="#FF4C4C" />
+                </TouchableOpacity>
+              </View>
+            ))
+          )}
         </View>
 
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
@@ -492,7 +526,7 @@ export default function ProfileScreen() {
           <View style={styles.modalOverlay}>
             <View style={[styles.modalBox, { overflow: "hidden" }]}>
               <Text style={styles.modalTitle}>
-                {isAddingPet ? "Add Pet" : "Pet Details"}
+                {isAddingPet ? "Add Pet" : "Edit Pet"}
               </Text>
 
               <ScrollView style={{ maxHeight: "70%" }}>
@@ -503,13 +537,46 @@ export default function ProfileScreen() {
                   onChangeText={(t) => setTempPet({ ...tempPet, name: t })}
                 />
 
+                {/* Age with Unit Toggle */}
                 <Text style={styles.label}>Age</Text>
-                <TextInput
-                  style={styles.input}
-                  value={tempPet.age}
-                  keyboardType="numeric"
-                  onChangeText={(t) => setTempPet({ ...tempPet, age: t })}
-                />
+                <View style={styles.ageRow}>
+                  <TextInput
+                    style={[styles.input, { flex: 1, marginRight: 8 }]}
+                    value={tempPet.age}
+                    keyboardType="numeric"
+                    placeholder="e.g., 3"
+                    onChangeText={(t) => {
+                      const num = t.replace(/[^0-9]/g, "").slice(0, 2);
+                      setTempPet({ ...tempPet, age: num });
+                    }}
+                  />
+                  <View style={styles.unitToggle}>
+                    <TouchableOpacity
+                      style={[
+                        styles.unitBtn,
+                        tempPet.ageUnit === "years" && styles.unitActive,
+                      ]}
+                      onPress={() => setTempPet({ ...tempPet, ageUnit: "years" })}
+                    >
+                      <Text style={[
+                        styles.unitText,
+                        tempPet.ageUnit === "years" && styles.unitTextActive,
+                      ]}>Years</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.unitBtn,
+                        tempPet.ageUnit === "months" && styles.unitActive,
+                      ]}
+                      onPress={() => setTempPet({ ...tempPet, ageUnit: "months" })}
+                    >
+                      <Text style={[
+                        styles.unitText,
+                        tempPet.ageUnit === "months" && styles.unitTextActive,
+                      ]}>Months</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
 
                 <Text style={styles.label}>Category</Text>
                 <View style={styles.dropdownWrapper}>
@@ -633,7 +700,7 @@ export default function ProfileScreen() {
   );
 }
 
-// Styles (unchanged)
+// === STYLES (Updated) ===
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff", paddingTop: 20 },
   header: { alignItems: "center", marginBottom: 20 },
@@ -647,10 +714,14 @@ const styles = StyleSheet.create({
   petsHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginHorizontal: 20, marginTop: 25 },
   sectionTitle: { fontSize: 17, fontWeight: "bold", color: "#00BFA6" },
   petContainer: { marginHorizontal: 20, marginTop: 10 },
-  petCardContainer: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
+  noPetsText: { textAlign: "center", color: "#999", fontStyle: "italic", marginTop: 20 },
+  petCardContainer: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
   petCard: { flexDirection: "row", backgroundColor: "#fff", borderWidth: 1, borderColor: "#eee", borderRadius: 12, padding: 12, flex: 1 },
-  petDetails: { flexDirection: "column" },
+  petDetails: { flex: 1 },
+  petNameRow: { flexDirection: "row", alignItems: "center", marginBottom: 2 },
   petName: { fontWeight: "bold", fontSize: 16, color: "#333" },
+  recentBadge: { backgroundColor: "#00BFA6", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, marginLeft: 8 },
+  recentText: { color: "#fff", fontSize: 10, fontWeight: "bold" },
   petInfo: { fontSize: 13, color: "#666" },
   deleteButton: { padding: 8 },
   logoutButton: { backgroundColor: "#FF4C4C", marginHorizontal: 20, borderRadius: 25, paddingVertical: 12, alignItems: "center", marginTop: 30, marginBottom: 50 },
@@ -662,6 +733,14 @@ const styles = StyleSheet.create({
   label: { fontWeight: "bold", marginTop: 12, color: "#333" },
   input: { borderWidth: 1, borderColor: "#ddd", borderRadius: 10, padding: 10, marginTop: 5 },
 
+  // Age Row
+  ageRow: { flexDirection: "row", alignItems: "center", marginTop: 5 },
+  unitToggle: { flexDirection: "row", borderWidth: 1, borderColor: "#ddd", borderRadius: 10, overflow: "hidden" },
+  unitBtn: { paddingHorizontal: 12, paddingVertical: 10, backgroundColor: "#f9f9f9" },
+  unitActive: { backgroundColor: "#00BFA6" },
+  unitText: { fontSize: 14, color: "#666" },
+  unitTextActive: { color: "#fff", fontWeight: "600" },
+
   modalButtons: { flexDirection: "row", justifyContent: "space-between", marginTop: 15 },
   modalButton: { flex: 1, alignItems: "center", paddingVertical: 12, marginHorizontal: 5, borderRadius: 25 },
   modalButtonText: { color: "#fff", fontWeight: "bold" },
@@ -669,7 +748,7 @@ const styles = StyleSheet.create({
   imagePicker: { alignItems: "center", marginBottom: 15 },
   imagePickerText: { color: "#00BFA6", marginTop: 5, fontWeight: "bold" },
 
-  dropdownWrapper: { marginTop: 5, zIndex: 10, elevation: 5 },
+  dropdownWrapper: { marginTop: 5, zIndex: 10 },
   dropdownButton: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -687,9 +766,6 @@ const styles = StyleSheet.create({
     borderColor: "#ddd",
     borderRadius: 8,
     maxHeight: 150,
-    overflow: "hidden",
-    zIndex: 20,
-    elevation: 6,
   },
   dropdownItem: { padding: 12, borderBottomWidth: 1, borderBottomColor: "#eee" },
 

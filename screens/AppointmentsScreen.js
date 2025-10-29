@@ -43,11 +43,12 @@ export default function AppointmentsScreen() {
   const [year, setYear] = useState("");
   const [selectedAnimal, setSelectedAnimal] = useState("");
   const [petName, setPetName] = useState("");
-  const [petAge, setPetAge] = useState("");           // Display: "3 years old"
-  const [petAgeRaw, setPetAgeRaw] = useState("");     // Firestore: "3"
+  const [petAgeRaw, setPetAgeRaw] = useState("");     // Raw number
+  const [petAge, setPetAge] = useState("");           // Display text
+  const [petAgeUnit, setPetAgeUnit] = useState("years"); // "years" or "months"
   const [selectedBreed, setSelectedBreed] = useState("");
   const [selectedService, setSelectedService] = useState("");
-  const [selectedDate, setSelectedDate] = useState("");
+  const [selectedDate, setSelectedDate] = useState(""); // "January 15 2025"
   const [selectedTime, setSelectedTime] = useState("");
   const [showCalendar, setShowCalendar] = useState(false);
   const [serviceModalVisible, setServiceModalVisible] = useState(false);
@@ -58,6 +59,10 @@ export default function AppointmentsScreen() {
   const [petSuggestions, setPetSuggestions] = useState([]);
   const [showPetDropdown, setShowPetDropdown] = useState(false);
   const petInputRef = useRef(null);
+
+  // === Calendar State ===
+  const [currentCalendarMonth, setCurrentCalendarMonth] = useState(new Date().getMonth()); // 0-11
+  const [currentCalendarYear, setCurrentCalendarYear] = useState(new Date().getFullYear());
 
   // Fetch user's saved pets
   useEffect(() => {
@@ -93,19 +98,23 @@ export default function AppointmentsScreen() {
     setShowPetDropdown(filtered.length > 0);
   };
 
-  // SELECT PET → AUTO-FILL ALL FIELDS
+  // === FIXED: selectPetSuggestion now preserves ageUnit from Firestore ===
   const selectPetSuggestion = async (pet) => {
     setPetName(pet.name);
     setSelectedAnimal(pet.categories);
     setSelectedBreed(pet.breed);
 
     const ageNum = Number(pet.age);
+    const unit = pet.ageUnit === "months" ? "months" : "years"; // Preserve stored unit
+    setPetAgeUnit(unit);
     setPetAgeRaw(ageNum.toString());
-    setPetAge(`${ageNum} ${ageNum === 1 ? "year old" : "years old"}`);
+
+    const unitText = ageNum === 1
+      ? (unit === "years" ? "year old" : "month old")
+      : (unit === "years" ? "years old" : "months old");
+    setPetAge(`${ageNum} ${unitText}`);
 
     setShowPetDropdown(false);
-
-    // Force breed modal to reflect selection
     setBreedModalVisible(true);
     setTimeout(() => setBreedModalVisible(false), 100);
   };
@@ -137,12 +146,89 @@ export default function AppointmentsScreen() {
   ];
 
   const breeds = {
-    Dog: ["Shih Tzu", "Labrador", "Poodle", "Golden Retriever"],
-    Cat: ["Persian", "Siamese", "Maine Coon", "Bengal"],
-    Rabbit: ["Lionhead", "Netherland Dwarf", "Lop"],
-    Bird: ["Parrot", "Canary", "Lovebird"],
+    Dog: ["Labrador", "German Shepherd", "Bulldog", "Beagle"],
+    Cat: ["Persian", "Siamese", "Maine Coon", "Tabby"],
+    Rabbit: ["Dutch", "Lop", "Rex", "Mini Lop"],
+    Bird: ["Parrot", "Canary", "Cockatiel", "Finch"],
   };
 
+  // === CALENDAR LOGIC ===
+  const monthNames = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+
+  const getDaysInMonth = (month, year) => {
+    return new Date(year, month + 1, 0).getDate();
+  };
+
+  const getFirstDayOfMonth = (month, year) => {
+    return new Date(year, month, 1).getDay(); // 0 = Sunday
+  };
+
+  const generateCalendarDays = () => {
+    const daysInMonth = getDaysInMonth(currentCalendarMonth, currentCalendarYear);
+    const firstDay = getFirstDayOfMonth(currentCalendarMonth, currentCalendarYear);
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+    const days = [];
+
+    // Empty slots before first day
+    for (let i = 0; i < firstDay; i++) {
+      days.push({ day: null, dateStr: null });
+    }
+
+    // Actual days
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(currentCalendarYear, currentCalendarMonth, day);
+      const dateStr = `${currentCalendarYear}-${String(currentCalendarMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const isPast = dateStr < todayStr;
+      const isToday = dateStr === todayStr;
+      const isSelected = selectedDate === `${monthNames[currentCalendarMonth]} ${day} ${currentCalendarYear}`;
+
+      days.push({
+        day,
+        dateStr,
+        isPast,
+        isToday,
+        isSelected,
+      });
+    }
+
+    return days;
+  };
+
+  const calendarDays = generateCalendarDays();
+
+  const handleDateSelect = (dayObj) => {
+    if (!dayObj.day || dayObj.isPast) return;
+
+    const selectedMonthName = monthNames[currentCalendarMonth];
+    const fullDate = `${selectedMonthName} ${dayObj.day} ${currentCalendarYear}`;
+    setSelectedDate(fullDate);
+    setShowCalendar(false);
+  };
+
+  const goToPrevMonth = () => {
+    if (currentCalendarMonth === 0) {
+      setCurrentCalendarMonth(11);
+      setCurrentCalendarYear(currentCalendarYear - 1);
+    } else {
+      setCurrentCalendarMonth(currentCalendarMonth - 1);
+    }
+  };
+
+  const goToNextMonth = () => {
+    if (currentCalendarMonth === 11) {
+      setCurrentCalendarMonth(0);
+      setCurrentCalendarYear(currentCalendarYear + 1);
+    } else {
+      setCurrentCalendarMonth(currentCalendarMonth + 1);
+    }
+  };
+
+  // === BOOKING ===
   const handleBookNow = async () => {
     if (!selectedAnimal || !petName || !selectedService || !selectedDate || !selectedTime) {
       Alert.alert("Error", "Please complete all fields before booking.");
@@ -157,7 +243,7 @@ export default function AppointmentsScreen() {
     };
     const monthNum = monthMap[dateParts[0]] || "01";
     const formattedDate = `${dateParts[2]}-${monthNum}-${dateParts[1].padStart(2, "0")}`;
-    const ageNum = petAgeRaw || "0";
+    const ageNum = petAgeRaw ? parseInt(petAgeRaw, 10) : 0;
 
     const newAppointment = {
       id: uuid.v4(),
@@ -165,6 +251,7 @@ export default function AppointmentsScreen() {
       animal: selectedAnimal,
       breed: selectedBreed,
       age: ageNum,
+      ageUnit: petAgeUnit, // Already correct — saved as "years" or "months"
       service: selectedService,
       date: formattedDate,
       time: selectedTime,
@@ -201,12 +288,10 @@ export default function AppointmentsScreen() {
       setSelectedBreed("");
       setPetAge("");
       setPetAgeRaw("");
+      setPetAgeUnit("years");
       setSelectedService("");
       setSelectedDate("");
       setSelectedTime("");
-      setMonth("");
-      setDay("");
-      setYear("");
     } catch (error) {
       console.error(error);
       Alert.alert("Error", "Failed to book appointment.");
@@ -292,7 +377,7 @@ export default function AppointmentsScreen() {
                   >
                     <Text style={styles.petSuggestionText}>{pet.name}</Text>
                     <Text style={styles.petSuggestionSub}>
-                      {pet.categories} • {pet.breed} • {pet.age} yr
+                      {pet.categories} • {pet.breed} • {pet.age} {pet.ageUnit === "months" ? "mo" : "yr"}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -300,27 +385,69 @@ export default function AppointmentsScreen() {
             )}
           </View>
 
-          {/* Age - Restricted to 0-99, formatted */}
+          {/* Pet Age - Years or Months */}
           <Text style={styles.label}>Pet Age</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter age (e.g., 3)"
-            keyboardType="numeric"
-            value={petAge}
-            onChangeText={(text) => {
-              const numeric = text.replace(/[^0-9]/g, "");
-              if (!numeric) {
-                setPetAgeRaw("");
-                setPetAge("");
-                return;
-              }
-              let age = parseInt(numeric, 10);
-              if (age < 0) age = 0;
-              if (age > 99) age = 99;
-              setPetAgeRaw(age.toString());
-              setPetAge(`${age} ${age === 1 ? "year old" : "years old"}`);
-            }}
-          />
+          <View style={styles.ageContainer}>
+            <TextInput
+              style={[styles.input, { flex: 1, marginRight: 8 }]}
+              placeholder="e.g., 3"
+              keyboardType="numeric"
+              value={petAgeRaw}
+              onChangeText={(text) => {
+                const numeric = text.replace(/[^0-9]/g, "");
+                if (!numeric) {
+                  setPetAgeRaw("");
+                  setPetAge("");
+                  return;
+                }
+                let age = parseInt(numeric, 10);
+                if (age < 0) age = 0;
+                if (age > 99) age = 99;
+                setPetAgeRaw(age.toString());
+
+                const unitText = age === 1
+                  ? (petAgeUnit === "years" ? "year old" : "month old")
+                  : (petAgeUnit === "years" ? "years old" : "months old");
+                setPetAge(`${age} ${unitText}`);
+              }}
+            />
+            <View style={styles.unitToggle}>
+              <TouchableOpacity
+                style={[
+                  styles.unitButton,
+                  petAgeUnit !== "months" && styles.unitButtonActive,
+                ]}
+                onPress={() => {
+                  setPetAgeUnit("years");
+                  const age = parseInt(petAgeRaw) || 0;
+                  const unitText = age === 1 ? "year old" : "years old";
+                  setPetAge(`${age} ${unitText}`);
+                }}
+              >
+                <Text style={[
+                  styles.unitText,
+                  petAgeUnit !== "months" && styles.unitTextActive,
+                ]}>Years</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.unitButton,
+                  petAgeUnit === "months" && styles.unitButtonActive,
+                ]}
+                onPress={() => {
+                  setPetAgeUnit("months");
+                  const age = parseInt(petAgeRaw) || 0;
+                  const unitText = age === 1 ? "month old" : "months old";
+                  setPetAge(`${age} ${unitText}`);
+                }}
+              >
+                <Text style={[
+                  styles.unitText,
+                  petAgeUnit === "months" && styles.unitTextActive,
+                ]}>Months</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
 
           {/* Breed */}
           <Text style={styles.label}>Breed</Text>
@@ -405,7 +532,7 @@ export default function AppointmentsScreen() {
             </View>
           </Modal>
 
-          {/* Date */}
+          {/* Date - Calendar Modal */}
           <Text style={styles.label}>Select Date</Text>
           <TouchableOpacity
             style={styles.dropdown}
@@ -417,93 +544,64 @@ export default function AppointmentsScreen() {
             <Ionicons name="chevron-down" size={20} color="#666" />
           </TouchableOpacity>
 
-          {/* Calendar Modal - Confirm only if all selected */}
+          {/* Calendar Modal */}
           <Modal visible={showCalendar} transparent animationType="slide">
             <View style={styles.modalOverlay}>
-              <View style={styles.modalBox}>
-                <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>Select a Date</Text>
-                  <TouchableOpacity onPress={() => setShowCalendar(false)}>
-                    <Ionicons name="close" size={26} color="#333" />
+              <View style={styles.calendarModalBox}>
+                {/* Header */}
+                <View style={styles.calendarHeader}>
+                  <TouchableOpacity onPress={goToPrevMonth}>
+                    <Ionicons name="chevron-back" size={24} color="#00BFA6" />
+                  </TouchableOpacity>
+                  <Text style={styles.calendarMonthYear}>
+                    {monthNames[currentCalendarMonth]} {currentCalendarYear}
+                  </Text>
+                  <TouchableOpacity onPress={goToNextMonth}>
+                    <Ionicons name="chevron-forward" size={24} color="#00BFA6" />
                   </TouchableOpacity>
                 </View>
 
-                <View style={styles.datePickerRow}>
-                  {/* MONTH */}
-                  <FlatList
-                    data={[
-                      "January", "February", "March", "April", "May", "June",
-                      "July", "August", "September", "October", "November", "December"
-                    ]}
-                    keyExtractor={(item) => item}
-                    style={{ height: 150 }}
-                    renderItem={({ item }) => (
-                      <TouchableOpacity
-                        style={[styles.dateOption, month === item && styles.selectedDateOption]}
-                        onPress={() => setMonth(item)}
-                      >
-                        <Text
-                          style={[styles.dateOptionText, month === item && styles.selectedDateOptionText]}
-                        >
-                          {item}
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                  />
-
-                  {/* DAY */}
-                  <FlatList
-                    data={Array.from({ length: 31 }, (_, i) => (i + 1).toString())}
-                    keyExtractor={(item) => item}
-                    style={{ height: 150 }}
-                    renderItem={({ item }) => (
-                      <TouchableOpacity
-                        style={[styles.dateOption, day === item && styles.selectedDateOption]}
-                        onPress={() => setDay(item)}
-                      >
-                        <Text
-                          style={[styles.dateOptionText, day === item && styles.selectedDateOptionText]}
-                        >
-                          {item}
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                  />
-
-                  {/* YEAR */}
-                  <FlatList
-                    data={Array.from({ length: 30 }, (_, i) => (2025 + i).toString())}
-                    keyExtractor={(item) => item}
-                    style={{ height: 150 }}
-                    renderItem={({ item }) => (
-                      <TouchableOpacity
-                        style={[styles.dateOption, year === item && styles.selectedDateOption]}
-                        onPress={() => setYear(item)}
-                      >
-                        <Text
-                          style={[styles.dateOptionText, year === item && styles.selectedDateOptionText]}
-                        >
-                          {item}
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                  />
+                {/* Weekdays */}
+                <View style={styles.weekdays}>
+                  {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+                    <Text key={d} style={styles.weekdayText}>{d}</Text>
+                  ))}
                 </View>
 
+                {/* Days Grid */}
+                <View style={styles.calendarGrid}>
+                  {calendarDays.map((item, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={[
+                        styles.calendarDay,
+                        !item.day && styles.emptyDay,
+                        item.isPast && styles.pastDay,
+                        item.isToday && styles.todayDay,
+                        item.isSelected && styles.selectedDay,
+                      ]}
+                      onPress={() => handleDateSelect(item)}
+                      disabled={!item.day || item.isPast}
+                    >
+                      <Text style={[
+                        styles.calendarDayText,
+                        !item.day && { color: "transparent" },
+                        item.isPast && { color: "#ccc" },
+                        item.isToday && { color: "#00BFA6", fontWeight: "bold" },
+                        item.isSelected && { color: "#fff" },
+                      ]}>
+                        {item.day}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Close Button */}
                 <TouchableOpacity
-                  style={[
-                    styles.confirmButton,
-                    !(month && day && year) && styles.confirmButtonDisabled,
-                  ]}
-                  onPress={() => {
-                    if (month && day && year) {
-                      setSelectedDate(`${month} ${day} ${year}`);
-                      setShowCalendar(false);
-                    }
-                  }}
-                  disabled={!(month && day && year)}
+                  style={styles.closeCalendarButton}
+                  onPress={() => setShowCalendar(false)}
                 >
-                  <Text style={styles.confirmText}>Confirm</Text>
+                  <Text style={styles.closeCalendarText}>Close</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -560,18 +658,36 @@ const styles = StyleSheet.create({
   dropdown: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderWidth: 1, borderColor: "#ddd", borderRadius: 10, padding: 12 },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.3)", justifyContent: "center", alignItems: "center" },
   modalBox: { backgroundColor: "#fff", borderRadius: 20, width: "90%", height: "70%", padding: 20 },
+  calendarModalBox: { backgroundColor: "#fff", borderRadius: 20, width: "90%", padding: 20, maxHeight: "80%" },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 10 },
   modalTitle: { fontSize: 18, fontWeight: "bold" },
   serviceOption: { paddingVertical: 12, borderBottomWidth: 1, borderColor: "#f1f1f1" },
   serviceText: { fontSize: 16 },
-  datePickerRow: { flexDirection: "row", justifyContent: "space-between" },
-  dateOption: { padding: 10 },
-  selectedDateOption: { backgroundColor: "#00BFA6", borderRadius: 10 },
-  dateOptionText: { color: "#333" },
-  selectedDateOptionText: { color: "#fff" },
-  confirmButton: { backgroundColor: "#00BFA6", borderRadius: 10, padding: 12, marginTop: 10, alignItems: "center" },
-  confirmButtonDisabled: { backgroundColor: "#ccc" },
-  confirmText: { color: "#fff", fontWeight: "bold" },
+
+  // Age
+  ageContainer: { flexDirection: "row", alignItems: "center" },
+  unitToggle: { flexDirection: "row", borderWidth: 1, borderColor: "#ddd", borderRadius: 10, overflow: "hidden" },
+  unitButton: { paddingHorizontal: 12, paddingVertical: 12, backgroundColor: "#f9f9f9" },
+  unitButtonActive: { backgroundColor: "#00BFA6" },
+  unitText: { fontSize: 14, color: "#666" },
+  unitTextActive: { color: "#fff", fontWeight: "600" },
+
+  // Calendar
+  calendarHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 15 },
+  calendarMonthYear: { fontSize: 18, fontWeight: "bold", color: "#333" },
+  weekdays: { flexDirection: "row", justifyContent: "space-between", marginBottom: 10 },
+  weekdayText: { flex: 1, textAlign: "center", fontWeight: "600", color: "#666", fontSize: 14 },
+  calendarGrid: { flexDirection: "row", flexWrap: "wrap" },
+  calendarDay: { width: `${100 / 7}%`, aspectRatio: 1, justifyContent: "center", alignItems: "center", marginBottom: 8 },
+  emptyDay: { backgroundColor: "transparent" },
+  pastDay: { opacity: 0.4 },
+  todayDay: { backgroundColor: "#e6f7f5", borderRadius: 20, borderWidth: 1, borderColor: "#00BFA6" },
+  selectedDay: { backgroundColor: "#00BFA6", borderRadius: 20 },
+  calendarDayText: { fontSize: 15 },
+
+  closeCalendarButton: { marginTop: 20, backgroundColor: "#eee", padding: 12, borderRadius: 10, alignItems: "center" },
+  closeCalendarText: { fontWeight: "600", color: "#333" },
+
   timeSlots: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   timeButton: { borderWidth: 1, borderColor: "#ddd", borderRadius: 20, paddingHorizontal: 15, paddingVertical: 8 },
   timeButtonActive: { backgroundColor: "#00BFA6", borderColor: "#00BFA6" },
