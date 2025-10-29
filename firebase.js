@@ -1,8 +1,11 @@
 // firebase.js
-import { getApps, initializeApp } from "firebase/app";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getApp, getApps, initializeApp } from "firebase/app";
 import {
   browserLocalPersistence,
   getAuth,
+  getReactNativePersistence,
+  initializeAuth,
   setPersistence,
 } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
@@ -18,22 +21,24 @@ const firebaseConfig = {
   measurementId: "G-ZD35TCTDK0",
 };
 
-// Prevent multiple inits
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+// ✅ Use single Firebase app
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
+// --- AUTH ---
+let auth;
+if (typeof window === "undefined") {
+  // 📱 React Native
+  auth = initializeAuth(app, {
+    persistence: getReactNativePersistence(AsyncStorage),
+  });
+} else {
+  // 🖥️ Web
+  auth = getAuth(app);
+  setPersistence(auth, browserLocalPersistence).catch(console.error);
+}
+
+// --- FIRESTORE & STORAGE ---
 export const db = getFirestore(app);
 export const storage = getStorage(app);
-export const auth = getAuth(app);
+export { auth };
 
-// 🔥 Platform-aware persistence setup
-if (typeof window !== "undefined") {
-  // 🖥️ Web
-  setPersistence(auth, browserLocalPersistence).catch(console.error);
-} else {
-  // 📱 React Native – import dynamically to avoid breaking web build
-  (async () => {
-    const { getReactNativePersistence } = await import("firebase/auth");
-    const AsyncStorage = (await import("@react-native-async-storage/async-storage")).default;
-    setPersistence(auth, getReactNativePersistence(AsyncStorage)).catch(console.error);
-  })();
-}

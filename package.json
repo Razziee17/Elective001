@@ -4,7 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "npx expo start",
+    "android": "npx expo run:android",
+    "ios": "npx expo run:ios"
   },
   "repository": {
     "type": "git",
@@ -23,9 +26,11 @@
     "@react-native-community/datetimepicker": "8.4.4",
     "@react-navigation/bottom-tabs": "^7.7.1",
     "@react-navigation/native": "^7.1.19",
+    "@react-navigation/native-stack": "^7.6.1",
     "@react-navigation/stack": "^7.6.1",
     "expo": "^54.0.21",
     "expo-image-picker": "~17.0.8",
+    "fbjs": "^3.0.5",
     "firebase": "^12.4.0",
     "metro": "^0.83.1",
     "react": "19.1.0",
@@ -33,12 +38,14 @@
     "react-native": "0.81.5",
     "react-native-calendars": "^1.1306.0",
     "react-native-element-dropdown": "^2.12.4",
-    "react-native-gesture-handler": "~2.28.0",
-    "react-native-reanimated": "~4.1.1",
+    "react-native-gesture-handler": "^2.29.0",
+    "react-native-reanimated": "^3.19.3",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
     "react-native-uuid": "^2.0.3",
-    "react-native-vector-icons": "^10.3.0"
+    "react-native-vector-icons": "^10.3.0",
+    "react-native-web": "^0.21.2",
+    "react-native-worklets": "^0.5.2"
   },
   "devDependencies": {
     "@react-native-community/cli": "^20.0.2",

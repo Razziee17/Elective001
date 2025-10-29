@@ -89,66 +89,88 @@ export default function AdminAppointmentsScreen() {
     (app) => app.date === selectedDate
   );
 
-  // ✅ Approve
+    // ✅ Approve
   const openApproveFlow = (appt) => {
+    console.log("Opening approve flow for:", appt?.id);
     setCurrentAppt(appt);
     setApproveModalVisible(true);
   };
+
   const confirmApprove = async () => {
+    // 🧠 Safety check to prevent invalid document paths
+    if (!currentAppt?.id) {
+      Alert.alert("Error", "Invalid appointment ID. Please try again.");
+      console.error("❌ confirmApprove called with missing ID:", currentAppt);
+      return;
+    }
+
+    console.log("Approving appointment:", currentAppt.id);
+
     try {
       const ref = doc(db, "appointments", currentAppt.id);
-      await updateDoc(ref, { status: "approved", updatedAt: serverTimestamp() });
+      await updateDoc(ref, {
+        status: "approved",
+        updatedAt: serverTimestamp(),
+      });
+
+      console.log("✅ Successfully approved:", currentAppt.id);
       setApproveModalVisible(false);
       Alert.alert("Approved", "Appointment approved successfully.");
     } catch (err) {
-      Alert.alert("Error", err.message);
+      console.error("🔥 Error approving appointment:", err);
+      Alert.alert("Error", err.message || "Failed to approve appointment.");
     }
   };
 
-  // ❌ Decline
-  const openDeclineFlow = (appt) => {
-    setCurrentAppt(appt);
-    setDeclineNotes(appt.declineNotes || "");
-    setDeclineModalVisible(true);
-  };
-  const confirmDecline = async () => {
-    if (!declineNotes.trim()) return Alert.alert("Error", "Enter a reason.");
-    try {
-      const ref = doc(db, "appointments", currentAppt.id);
-      await updateDoc(ref, {
-        status: "declined",
-        declineNotes,
-        updatedAt: serverTimestamp(),
-      });
-      setDeclineModalVisible(false);
-      Alert.alert("Declined", "Appointment declined.");
-    } catch (err) {
-      Alert.alert("Error", err.message);
-    }
-  };
 
-  // 📅 Follow-up
-  const openFollowUpFlow = (appt) => {
-    setCurrentAppt(appt);
-    setFollowUpNotes(appt.followUpNotes || "");
-    setFollowUpDate(appt.followUpDate ? new Date(appt.followUpDate) : new Date());
-    setFollowUpModalVisible(true);
-  };
-  const confirmFollowUp = async () => {
-    try {
-      const ref = doc(db, "appointments", currentAppt.id);
-      await updateDoc(ref, {
-        status: "followup",
-        followUpNotes,
-        followUpDate: followUpDate.toISOString().split("T")[0],
-        updatedAt: serverTimestamp(),
-      });
-      setFollowUpModalVisible(false);
-      Alert.alert("Follow Up", "Follow-up scheduled.");
-    } catch (err) {
-      Alert.alert("Error", err.message);
-    }
-  };
+      // ❌ Decline
+      const openDeclineFlow = (appt) => {
+        setCurrentAppt(appt);
+        setDeclineNotes(appt.declineNotes || "");
+        setDeclineModalVisible(true);
+      };
+      const confirmDecline = async () => {
+      if (!currentAppt?.id) {
+        Alert.alert("Error", "Invalid appointment ID.");
+        return;
+      }
+      if (!declineNotes.trim()) return Alert.alert("Error", "Enter a reason.");
+      try {
+        const ref = doc(db, "appointments", currentAppt.id);
+        await updateDoc(ref, {
+          status: "declined",
+          declineNotes,
+          updatedAt: serverTimestamp(),
+        });
+        setDeclineModalVisible(false);
+        Alert.alert("Declined", "Appointment declined.");
+      } catch (err) {
+        console.error("🔥 Error declining appointment:", err);
+        Alert.alert("Error", err.message);
+      }
+    };
+
+    const confirmFollowUp = async () => {
+      if (!currentAppt?.id) {
+        Alert.alert("Error", "Invalid appointment ID.");
+        return;
+      }
+      try {
+        const ref = doc(db, "appointments", currentAppt.id);
+        await updateDoc(ref, {
+          status: "followup",
+          followUpNotes,
+          followUpDate: followUpDate.toISOString().split("T")[0],
+          updatedAt: serverTimestamp(),
+        });
+        setFollowUpModalVisible(false);
+        Alert.alert("Follow Up", "Follow-up scheduled.");
+      } catch (err) {
+        console.error("🔥 Error setting follow-up:", err);
+        Alert.alert("Error", err.message);
+      }
+    };
+
 
   // 💊 Medication Logic
   const openMedicationFromDone = (appt) => {
