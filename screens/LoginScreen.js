@@ -3,15 +3,14 @@ import { signInWithEmailAndPassword } from "firebase/auth";
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { useState } from "react";
 import {
-  Alert,
   Image,
+  Modal,
   StyleSheet,
   Switch,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
-  Modal,
+  View
 } from "react-native";
 import { auth, db } from "../firebase";
 

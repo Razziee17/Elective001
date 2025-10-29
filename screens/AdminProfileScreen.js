@@ -1,4 +1,3 @@
-import { Ionicons } from "@expo/vector-icons";
 import { signOut } from "firebase/auth";
 import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
@@ -41,7 +40,7 @@ export default function AdminProfileScreen({ navigation }) {
           const defaultData = {
             firstName: "Admin",
             lastName: "",
-            email: user.email || "admin@vetplus.com",
+            email: user.email || "vetplus@admin.com",
             phone: "+1 234-567-8900",
             bio: "Clinic Administrator responsible for managing staff and appointments.",
             department: "Administration",
@@ -96,8 +95,8 @@ export default function AdminProfileScreen({ navigation }) {
 
   return (
     <ScrollView style={styles.content}>
-      <View style={styles.header}>
-        <Text style={styles.logo}>VetPlus | Animal Clinic</Text>
+      {/* <View style={styles.header}>
+        
         <View style={styles.userInfo}>
           <Text style={styles.user}>
             {profile.firstName || "Admin"} (Clinic Administrator)
@@ -110,7 +109,7 @@ export default function AdminProfileScreen({ navigation }) {
             <Ionicons name="log-out-outline" size={20} color="#FF4C4C" />
           </TouchableOpacity>
         </View>
-      </View>
+      </View> */}
 
       <View style={styles.profileContainer}>
         <Text style={styles.sectionTitle}>Profile Information</Text>
