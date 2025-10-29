@@ -1,7 +1,29 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
-import { useState } from "react";
-import { FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+  collection,
+  doc,
+  getDoc,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+} from "firebase/firestore";
+import { useEffect, useState } from "react";
+import {
+  FlatList,
+  Image,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { auth, db } from "../firebase";
+
 
 export default function HomeScreen({ setNotificationsVisible, setMenuVisible }) {
   const navigation = useNavigation();
@@ -13,12 +35,80 @@ export default function HomeScreen({ setNotificationsVisible, setMenuVisible }) 
   const [profileVisible, setProfileVisible] = useState(false);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(null);
+  const [announcementsModalVisible, setAnnouncementsModalVisible] = useState(false);
+  const [breedModalVisible, setBreedModalVisible] = useState(false);
+  const [selectedAnimal, setSelectedAnimal] = useState(null);
+  const [selectedBreeds, setSelectedBreeds] = useState([]);
+
 
   // Use props if provided, otherwise use local state
   const notificationsVisible = setNotificationsVisible ? notificationsVisibleLocal : notificationsVisibleLocal;
   const setNotificationsVisibleFinal = setNotificationsVisible || setNotificationsVisibleLocal;
   const menuVisible = setMenuVisible ? menuVisibleLocal : menuVisibleLocal;
   const setMenuVisibleFinal = setMenuVisible || setMenuVisibleLocal;
+
+  // announcements (from Firestore)
+  const [announcements, setAnnouncements] = useState([]);
+
+  // Per-user read announcements (IDs)
+  const [readAnnouncements, setReadAnnouncements] = useState([]);
+
+  // Current authenticated user (may be null until auth ready)
+  const [currentUser, setCurrentUser] = useState(auth.currentUser);
+
+  useEffect(() => {
+    // keep local currentUser in sync if auth changes
+    const unsubscribeAuth = auth.onAuthStateChanged((u) => {
+      setCurrentUser(u);
+    });
+    return () => unsubscribeAuth();
+  }, []);
+
+  // Listen for announcements in real-time
+  useEffect(() => {
+    const q = query(collection(db, "announcements"), orderBy("createdAt", "desc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      setAnnouncements(data);
+    }, (err) => {
+      console.error("Announcements listener error:", err);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Listen for which announcements the current user has read
+  useEffect(() => {
+    if (!currentUser) {
+      setReadAnnouncements([]);
+      return;
+    }
+
+    const readsCol = collection(db, "users", currentUser.uid, "readAnnouncements");
+    const unsubscribe = onSnapshot(readsCol, (snapshot) => {
+      const ids = snapshot.docs.map((d) => d.id);
+      setReadAnnouncements(ids);
+    }, (err) => {
+      console.error("User read announcements listener error:", err);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  // Mark a single announcement as read for this user
+  const markAsRead = async (announcementId) => {
+    if (!currentUser) return;
+    try {
+      const ref = doc(db, "users", currentUser.uid, "readAnnouncements", announcementId);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) {
+        await setDoc(ref, { readAt: serverTimestamp() });
+      }
+      // local state will update via onSnapshot listener
+    } catch (err) {
+      console.error("Failed to mark announcement read:", err);
+    }
+  };
 
   // Ensure servicesPreview is defined
   const servicesPreview = [
@@ -70,6 +160,13 @@ export default function HomeScreen({ setNotificationsVisible, setMenuVisible }) 
     setCategoryModalVisible(true);
   };
 
+const openBreeds = (animal, breeds) => {
+    setSelectedAnimal(animal);
+    setSelectedBreeds(breeds);
+    setBreedModalVisible(true);
+  };
+
+
   const handleLogout = () => {
     setMenuVisibleFinal(false);
     navigation.replace("Login");
@@ -119,25 +216,137 @@ export default function HomeScreen({ setNotificationsVisible, setMenuVisible }) 
         </View>
       </Modal>
 
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-        <View style={styles.announcementCard}>
-          <Image source={require("../assets/dog.png")} style={styles.announcementImage} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.announcementTitle}>Caring for Your Pets</Text>
-            <Text style={styles.announcementText}>Schedule a vet appointment easily and keep your pets healthy!</Text>
+      {/*Announcements from admin */}
+      
+        {/* 🔔 Announcements from Firestore */}
+        <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+          {/* 🔔 Announcements from Firestore */}
+          <View style={{ marginTop: 12 }}>
+            {announcements.length > 0 ? (
+              <>
+                {/* Show only the latest announcement */}
+                <TouchableOpacity
+                  style={styles.announcementCard}
+                  onPress={() => {
+                    setAnnouncementsModalVisible(true);
+                    // Mark latest announcement as read
+                    if (announcements[0]?.id) markAsRead(announcements[0].id);
+                  }}
+                >
+                  <Image
+                    source={require("../assets/dog.png")}
+                    style={styles.announcementImage}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <Text style={styles.announcementTitle}>Admin says:</Text>
+                      {!readAnnouncements.includes(announcements[0].id) && (
+                        <View style={styles.newBadge}>
+                          <Text style={styles.newBadgeText}>NEW</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.announcementText}>{announcements[0].text}</Text>
+                    {announcements[0].createdAt?.seconds && (
+                      <Text style={{ fontSize: 11, color: "#888", marginTop: 4 }}>
+                        {new Date(
+                          announcements[0].createdAt.seconds * 1000
+                        ).toLocaleString()}
+                      </Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
+
+                {/* 📢 Modal for viewing all announcements */}
+                <Modal
+                  visible={announcementsModalVisible}
+                  transparent
+                  animationType="slide"
+                  onRequestClose={() => setAnnouncementsModalVisible(false)}
+                >
+                  <View style={styles.overlay}>
+                    <View style={styles.modalBox}>
+                      <View style={styles.modalHeader}>
+                        <Text style={styles.modalTitle}>All Announcements</Text>
+                        <TouchableOpacity
+                          onPress={() => setAnnouncementsModalVisible(false)}
+                        >
+                          <Ionicons name="close" size={26} color="#333" />
+                        </TouchableOpacity>
+                      </View>
+                      <ScrollView>
+                        {announcements.map((a) => (
+                          <TouchableOpacity
+                            key={a.id}
+                            onPress={() => markAsRead(a.id)}
+                            style={{ marginBottom: 16 }}
+                          >
+                            <View
+                              style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                              }}
+                            >
+                              <Text
+                                style={[styles.announcementTitle, { marginBottom: 2 }]}
+                              >
+                                Admin says:
+                              </Text>
+                              {!readAnnouncements.includes(a.id) && (
+                                <View style={styles.newBadge}>
+                                  <Text style={styles.newBadgeText}>NEW</Text>
+                                </View>
+                              )}
+                            </View>
+                            <Text style={styles.announcementText}>{a.text}</Text>
+                            {a.createdAt?.seconds && (
+                              <Text style={{ fontSize: 11, color: "#888", marginTop: 2 }}>
+                                {new Date(a.createdAt.seconds * 1000).toLocaleString()}
+                              </Text>
+                            )}
+                            <View
+                              style={{ height: 1, backgroundColor: "#eee", marginTop: 8 }}
+                            />
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  </View>
+                </Modal>
+              </>
+            ) : (
+              <View style={styles.announcementCard}>
+                <Image
+                  source={require("../assets/dog.png")}
+                  style={styles.announcementImage}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.announcementTitle}>No Announcements</Text>
+                  <Text style={styles.announcementText}>
+                    Stay tuned for updates from the clinic.
+                  </Text>
+                </View>
+              </View>
+            )}
           </View>
-        </View>
+
+       
 
         {/* 🐾 Categories */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Categories</Text>
-          <TouchableOpacity onPress={() => setSeeAllVisible(true)}>
-            <Text style={styles.linkText}>See all</Text>
-          </TouchableOpacity>
+          
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categories}>
-          {["Canine", "Feline", "Small mammals", "Exotics", "Birds", "Farm Animals"].map((category, i) => (
+          {["Canine", "Feline", "Small Mammals",  "Birds" ].map((category, i) => (
             <TouchableOpacity key={i} style={styles.categoryItem} onPress={() => openCategory(category)}>
               <View style={styles.categoryBox}>
                 <Ionicons name="paw-outline" size={28} color="#00BFA6" />
@@ -238,33 +447,8 @@ export default function HomeScreen({ setNotificationsVisible, setMenuVisible }) 
           </TouchableOpacity>
         </Modal>
 
-        {/* 📋 See All Categories Modal */}
-        <Modal visible={seeAllVisible} transparent animationType="fade">
-          <View style={styles.overlay}>
-            <View style={styles.modalBox}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>All Categories</Text>
-                <TouchableOpacity onPress={() => setSeeAllVisible(false)}>
-                  <Ionicons name="close" size={26} color="#333" />
-                </TouchableOpacity>
-              </View>
-              {["Canine", "Feline", "Small mammals", "Exotics", "Birds", "Farm animals"].map((category, i) => (
-                <TouchableOpacity
-                  key={i}
-                  style={styles.listItem}
-                  onPress={() => {
-                    openCategory(category);
-                    setSeeAllVisible(false);
-                  }}
-                >
-                  <Text style={styles.listText}>{category}</Text>
-                  <Ionicons name="chevron-forward" size={20} color="#00BFA6" />
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        </Modal>
-
+        
+        
         {/* 🐕 Category Animal List Modal */}
         <Modal visible={categoryModalVisible} transparent animationType="slide">
           <View style={styles.overlay}>
@@ -275,30 +459,90 @@ export default function HomeScreen({ setNotificationsVisible, setMenuVisible }) 
                   <Ionicons name="close" size={26} color="#333" />
                 </TouchableOpacity>
               </View>
+
               <FlatList
                 data={
                   selectedCategory === "Canine"
-                    ? ["Dog", "Labrador", "German Shepherd", "Beagle", "Bulldog"]
+                    ? [
+                        { animal: "Aspin (Asong Pinoy)", breeds: [] },
+                        { animal: "Shih Tzu", breeds: ["Imperial", "Standard", "Teacup"] },
+                        { animal: "Labrador Retriever", breeds: ["American", "English"] },
+                        { animal: "Pomeranian", breeds: ["Standard", "Teddy Bear", "Fox-Faced"] },
+                        { animal: "Chihuahua", breeds: ["Apple-Head", "Deer-Head", "Long-Haired"] },
+                      ]
                     : selectedCategory === "Feline"
-                    ? ["Cat", "Siamese", "Persian", "Bengal", "Maine Coon"]
-                    : selectedCategory === "Small mammals"
-                    ? ["Rabbit", "Hamster", "Guinea Pig", "Ferret"]
-                    : selectedCategory === "Exotics"
-                    ? ["Snake", "Lizard", "Turtle", "Iguana"]
+                    ? [
+                        { animal: "Puspin (Pusang Pinoy)", breeds: [] },
+                        { animal: "Persian Cat", breeds: ["Doll Face", "Flat Face", "Himalayan"] },
+                        { animal: "Siamese Cat", breeds: ["Traditional", "Modern"] },
+                        { animal: "British Shorthair", breeds: ["Blue", "Lilac", "Cream", "Silver Tabby"] },
+                        { animal: "Bengal Cat", breeds: ["Brown Spotted", "Snow Bengal", "Silver Bengal", "Marble Bengal"] },
+                      ]
+                    : selectedCategory === "Small Mammals"
+                    ? [
+                        { animal: "Hamster", breeds: ["Syrian", "Dwarf Campbell", "Winter White", "Roborovski", "Chinese"] },
+                        { animal: "Rabbit", breeds: ["Holland Lop", "Netherland Dwarf", "Lionhead", "Rex", "Mini Rex"] },
+                        { animal: "Hedgehog", breeds: ["African Pygmy", "Algerian"] },
+                      ]
                     : selectedCategory === "Birds"
-                    ? ["Parrot", "Cockatiel", "Canary", "Lovebird"]
-                    : ["Cow", "Goat", "Pig", "Chicken", "Sheep"]
+                    ? [
+                        { animal: "Lovebird", breeds: ["Peach-Faced", "Fischer’s", "Masked", "Nyasa", "Abyssinian"] },
+                        { animal: "Budgerigar (Budgie/Parakeet)", breeds: ["English", "American", "Lutino", "Albino", "Spangled"] },
+                        { animal: "Cockatiel", breeds: ["Normal Grey", "Lutino", "Pearl", "Pied", "White-Faced"] },
+                        { animal: "Canary", breeds: ["Gloster", "Border", "Fife", "Norwich", "Red Factor"] },
+                        { animal: "Philippine Maya", breeds: ["Eurasian Tree Sparrow (Passer montanus) — 'Maya'"] },
+                      ]
+                    : []
                 }
-                keyExtractor={(item) => item}
+                keyExtractor={(item) => item.animal}
                 renderItem={({ item }) => (
-                  <TouchableOpacity style={styles.listItem}>
-                    <Text style={styles.listText}>{item}</Text>
+                  <TouchableOpacity
+                    style={styles.listItem}
+                    onPress={() => {
+                      if (item.breeds.length > 0) {
+                        openBreeds(item.animal, item.breeds);
+                      }
+                    }}
+                  >
+                    <Text style={styles.listText}>{item.animal}</Text>
+                    {item.breeds.length > 0 && (
+                      <Ionicons name="chevron-forward" size={20} color="#00BFA6" />
+                    )}
                   </TouchableOpacity>
                 )}
               />
             </View>
           </View>
         </Modal>
+
+        {/* 🐾 Breed List Modal */}
+        <Modal visible={breedModalVisible} transparent animationType="slide">
+          <View style={styles.overlay}>
+            <View style={styles.modalBox}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>{selectedAnimal}</Text>
+                <TouchableOpacity onPress={() => setBreedModalVisible(false)}>
+                  <Ionicons name="close" size={26} color="#333" />
+                </TouchableOpacity>
+              </View>
+              <FlatList
+                data={selectedBreeds}
+                keyExtractor={(item, i) => i.toString()}
+                renderItem={({ item }) => (
+                  <View style={styles.listItem}>
+                    <Text style={styles.listText}>{item}</Text>
+                  </View>
+                )}
+                ListEmptyComponent={
+                  <Text style={{ textAlign: "center", color: "#777", marginTop: 20 }}>
+                    No specific breeds available.
+                  </Text>
+                }
+              />
+            </View>
+          </View>
+        </Modal>
+
 
         {/* Modal: All Services */}
         <Modal visible={seeAllVisible} animationType="slide" transparent>
@@ -435,8 +679,9 @@ const styles = StyleSheet.create({
   categories: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 0,
-    marginBottom: 8,
+    paddingHorizontal: 20,
+    marginBottom: 10,
+    justifyContent: "space-between",
   },
   categoryItem: {
     alignItems: "center",
@@ -643,4 +888,13 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: "#00BFA6",
   },
+
+  // NEW badge style
+  newBadge: {
+    backgroundColor: "#FF4C4C",
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  newBadgeText: { color: "#fff", fontSize: 10, fontWeight: "700" },
 });

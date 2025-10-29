@@ -4,6 +4,7 @@ import { signOut } from "firebase/auth";
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -15,6 +16,7 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
+
 import { useEffect, useState } from "react";
 import {
   Alert,
@@ -40,6 +42,10 @@ export default function AdminDashboard({ navigation }) {
   const [announcementModalVisible, setAnnouncementModalVisible] = useState(false);
   const [announcements, setAnnouncements] = useState([]);
   const [newAnnouncement, setNewAnnouncement] = useState("");
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editText, setEditText] = useState("");
+  const [editId, setEditId] = useState(null);
+
 
   // appointments notifications (pending)
   const [appointmentsNotifications, setAppointmentsNotifications] = useState([]);
@@ -112,6 +118,52 @@ export default function AdminDashboard({ navigation }) {
       Alert.alert("Error", "Failed to add announcement.");
     }
   };
+
+      // 📝 Edit announcement
+    const handleEditAnnouncement = (id, oldText) => {
+        setEditId(id);
+        setEditText(oldText);
+        setEditModalVisible(true);
+      };
+
+      // 💾 Save Edited Announcement
+      const handleSaveEdit = async () => {
+        if (!editText.trim()) {
+          Alert.alert("Error", "Announcement cannot be empty.");
+          return;
+        }
+
+        try {
+          const ref = doc(db, "announcements", editId);
+          await updateDoc(ref, {
+            text: editText.trim(),
+            updatedAt: serverTimestamp(),
+          });
+          setEditModalVisible(false);
+          setEditId(null);
+          setEditText("");
+          loadAnnouncements();
+          Alert.alert("Updated", "Announcement updated successfully!");
+        } catch (err) {
+          console.error("Error updating announcement:", err);
+          Alert.alert("Error", "Failed to update announcement.");
+        }
+      };
+
+    // 🗑️ Delete announcement
+    const handleDeleteAnnouncement = async (id) => {
+      const confirm = window.confirm("Are you sure you want to delete this announcement?");
+      if (!confirm) return;
+      try {
+        await deleteDoc(doc(db, "announcements", id));
+        loadAnnouncements();
+        Alert.alert("Deleted", "Announcement removed successfully.");
+      } catch (err) {
+        console.error("Error deleting announcement:", err);
+        Alert.alert("Error", "Failed to delete announcement.");
+      }
+    };
+
 
   // Listen to appointmentsNotifications (existing logic for other use)
   useEffect(() => {
@@ -412,17 +464,48 @@ export default function AdminDashboard({ navigation }) {
       >
         <View style={styles.overlay}>
           <View style={styles.modalBox}>
+            {/* 🔹 X Close Icon */}
+            <TouchableOpacity
+              style={styles.closeIconContainer}
+              onPress={() => setAnnouncementModalVisible(false)}
+            >
+              <Ionicons name="close-circle" size={24} color="#FF4C4C" />
+            </TouchableOpacity>
+
             <Text style={styles.modalTitle}>Clinic Announcements</Text>
 
             <ScrollView style={{ maxHeight: 250 }}>
               {announcements.map((a) => (
-                <View key={a.id} style={styles.announcementCard}>
-                  <Text style={styles.announcementText}>{a.text}</Text>
-                  {a.createdAt && (
-                    <Text style={styles.dateText}>
-                      {new Date(a.createdAt.seconds * 1000).toLocaleString()}
-                    </Text>
-                  )}
+                <View
+                  key={a.id}
+                  style={[
+                    styles.announcementCard,
+                    { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+                  ]}
+                >
+                  <View style={{ flex: 1, marginRight: 10 }}>
+                    <Text style={styles.announcementText}>{a.text}</Text>
+                    {a.createdAt && (
+                      <Text style={styles.dateText}>
+                        {new Date(a.createdAt.seconds * 1000).toLocaleString()}
+                      </Text>
+                    )}
+                  </View>
+
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <TouchableOpacity
+                      onPress={() => handleEditAnnouncement(a.id, a.text)}
+                      style={{ marginHorizontal: 5 }}
+                    >
+                      <Ionicons name="create-outline" size={20} color="#00BFA6" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleDeleteAnnouncement(a.id)}
+                      style={{ marginHorizontal: 5 }}
+                    >
+                      <Ionicons name="trash-outline" size={20} color="#FF4C4C" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ))}
             </ScrollView>
@@ -434,22 +517,45 @@ export default function AdminDashboard({ navigation }) {
               onChangeText={setNewAnnouncement}
             />
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.addButton} onPress={handleAddAnnouncement}>
-                <Text style={styles.addText}>Add</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => setAnnouncementModalVisible(false)}
-              >
-                <Text style={styles.closeText}>Close</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity style={styles.addButton} onPress={handleAddAnnouncement}>
+              <Text style={styles.addText}>Add</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* Threads & Appointments Modal (shows pending appointments at top + threads below) */}
+      {/* ✏️ Edit Announcement Modal */}
+      <Modal
+        visible={editModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <View style={styles.overlay}>
+          <View style={styles.modalBox}>
+            {/* 🔹 X Close Icon */}
+            <TouchableOpacity
+              style={styles.closeIconContainer}
+              onPress={() => setEditModalVisible(false)}
+            >
+              <Ionicons name="close-circle" size={24} color="#FF4C4C" />
+            </TouchableOpacity>
+
+            <Text style={styles.modalTitle}>Edit Announcement</Text>
+            <TextInput
+              placeholder="Update announcement text..."
+              style={styles.input}
+              value={editText}
+              onChangeText={setEditText}
+            />
+            <TouchableOpacity style={styles.addButton} onPress={handleSaveEdit}>
+              <Text style={styles.addText}>Save</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Threads & Appointments Modal */}
       <Modal
         visible={chatModalVisible && !selectedThread}
         transparent
@@ -458,9 +564,16 @@ export default function AdminDashboard({ navigation }) {
       >
         <View style={styles.overlay}>
           <View style={styles.modalBox}>
+            {/* 🔹 X Close Icon */}
+            <TouchableOpacity
+              style={styles.closeIconContainer}
+              onPress={() => setChatModalVisible(false)}
+            >
+              <Ionicons name="close-circle" size={24} color="#FF4C4C" />
+            </TouchableOpacity>
+
             <Text style={styles.modalTitle}>Notifications</Text>
 
-            {/* PENDING APPOINTMENTS */}
             <Text style={styles.sectionTitle}>Pending Appointments</Text>
             <ScrollView style={styles.appointmentList} contentContainerStyle={{ paddingBottom: 8 }}>
               {pendingAppointments.length > 0 ? (
@@ -483,14 +596,16 @@ export default function AdminDashboard({ navigation }) {
               )}
             </ScrollView>
 
-            {/* USER CHATS */}
             <Text style={[styles.sectionTitle, { marginTop: 10 }]}>User Chats</Text>
             <ScrollView style={styles.chatList} contentContainerStyle={{ paddingBottom: 20 }}>
               {threads.length > 0 ? (
                 threads.map((t) => {
-                  const unread = typeof t.unreadCount === "number"
-                    ? t.unreadCount
-                    : (t.lastSender === "user" && t.lastSeenByAdmin === false ? 1 : 0);
+                  const unread =
+                    typeof t.unreadCount === "number"
+                      ? t.unreadCount
+                      : t.lastSender === "user" && t.lastSeenByAdmin === false
+                      ? 1
+                      : 0;
 
                   return (
                     <TouchableOpacity
@@ -501,14 +616,22 @@ export default function AdminDashboard({ navigation }) {
                         setChatModalVisible(false);
                       }}
                     >
-                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                        }}
+                      >
                         <View style={{ flex: 1 }}>
                           <Text style={styles.threadName}>{t.userName || "User"}</Text>
                           <Text style={styles.threadPreview} numberOfLines={1}>
                             {t.lastMessage || "No messages yet"}
                           </Text>
                           <Text style={styles.threadDate}>
-                            {t.updatedAt?.seconds ? new Date(t.updatedAt.seconds * 1000).toLocaleString() : ""}
+                            {t.updatedAt?.seconds
+                              ? new Date(t.updatedAt.seconds * 1000).toLocaleString()
+                              : ""}
                           </Text>
                         </View>
                         {unread > 0 && (
@@ -524,18 +647,11 @@ export default function AdminDashboard({ navigation }) {
                 <Text style={styles.noThreadText}>No active chats</Text>
               )}
             </ScrollView>
-
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => setChatModalVisible(false)}
-            >
-              <Text style={styles.closeText}>Close</Text>
-            </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* Selected Thread Chat Modal (admin replies) */}
+      {/* Chat Modal */}
       <Modal
         visible={!!selectedThread}
         transparent
@@ -544,6 +660,14 @@ export default function AdminDashboard({ navigation }) {
       >
         <View style={styles.overlay}>
           <View style={styles.chatBox}>
+            {/* 🔹 X Close Icon */}
+            <TouchableOpacity
+              style={styles.closeIconContainer}
+              onPress={() => setSelectedThread(null)}
+            >
+              <Ionicons name="close-circle" size={24} color="#FF4C4C" />
+            </TouchableOpacity>
+
             <Text style={styles.modalTitle}>Chat — {selectedThread?.userName || "User"}</Text>
 
             <ScrollView style={styles.chatScroll} contentContainerStyle={{ paddingBottom: 20 }}>
@@ -558,9 +682,10 @@ export default function AdminDashboard({ navigation }) {
                   >
                     <Text style={styles.msgText}>{m.message}</Text>
                     <Text style={styles.msgMeta}>
-                      {m.sender === "admin" ? (adminData.firstName || "You") : (selectedThread?.userName || "User")}
-                      {" • "}
-                      {m.createdAt ? new Date(m.createdAt.seconds * 1000).toLocaleTimeString() : ""}
+                      {m.sender === "admin"
+                        ? adminData.firstName || "You"
+                        : selectedThread?.userName || "User"}{" "}
+                      • {m.createdAt ? new Date(m.createdAt.seconds * 1000).toLocaleTimeString() : ""}
                     </Text>
                   </View>
                 ))
@@ -576,22 +701,19 @@ export default function AdminDashboard({ navigation }) {
                 value={replyText}
                 onChangeText={setReplyText}
               />
-              <TouchableOpacity style={styles.sendBtn} onPress={handleSendReply} disabled={sendingReply}>
+              <TouchableOpacity
+                style={styles.sendBtn}
+                onPress={handleSendReply}
+                disabled={sendingReply}
+              >
                 <Ionicons name="send" size={20} color="#fff" />
               </TouchableOpacity>
             </View>
-
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => setSelectedThread(null)}
-            >
-              <Text style={styles.closeText}>Back</Text>
-            </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* Selected Appointment Details Modal */}
+      {/* Appointment Details Modal */}
       <Modal
         visible={!!selectedAppointment}
         transparent
@@ -600,24 +722,26 @@ export default function AdminDashboard({ navigation }) {
       >
         <View style={styles.overlay}>
           <View style={styles.detailBox}>
+            {/* 🔹 X Close Icon */}
+            <TouchableOpacity
+              style={styles.closeIconContainer}
+              onPress={() => setSelectedAppointment(null)}
+            >
+              <Ionicons name="close-circle" size={24} color="#FF4C4C" />
+            </TouchableOpacity>
+
             <Text style={styles.detailTitle}>Appointment Details</Text>
             {selectedAppointment && (
               <>
-                <Text style={styles.detailText}>
-                  🐾 Pet: {selectedAppointment.petName || "N/A"}
-                </Text>
+                <Text style={styles.detailText}>🐾 Pet: {selectedAppointment.petName || "N/A"}</Text>
                 <Text style={styles.detailText}>
                   👤 Owner: {selectedAppointment.owner || selectedAppointment.userName || "N/A"}
                 </Text>
                 <Text style={styles.detailText}>
                   ✉️ Email: {selectedAppointment.email || selectedAppointment.owner || "N/A"}
                 </Text>
-                <Text style={styles.detailText}>
-                  🗓 Date: {selectedAppointment.date || "N/A"}
-                </Text>
-                <Text style={styles.detailText}>
-                  ⏰ Time: {selectedAppointment.time || "N/A"}
-                </Text>
+                <Text style={styles.detailText}>🗓 Date: {selectedAppointment.date || "N/A"}</Text>
+                <Text style={styles.detailText}>⏰ Time: {selectedAppointment.time || "N/A"}</Text>
                 <Text style={styles.detailText}>
                   💉 Service: {selectedAppointment.service || "N/A"}
                 </Text>
@@ -636,18 +760,12 @@ export default function AdminDashboard({ navigation }) {
                     <Text style={styles.actionText}>Decline</Text>
                   </TouchableOpacity>
                 </View>
-
-                <TouchableOpacity
-                  onPress={() => setSelectedAppointment(null)}
-                  style={styles.closeBtn}
-                >
-                  <Text style={styles.closeText}>Close</Text>
-                </TouchableOpacity>
               </>
             )}
           </View>
         </View>
       </Modal>
+
 
       {/* Menu Modal */}
       <Modal
@@ -788,7 +906,7 @@ const styles = StyleSheet.create({
   modalBox: {
     backgroundColor: "#fff",
     borderRadius: 10,
-    width: "90%",
+    width: "50%",
     padding: 20,
   },
   modalTitle: {
@@ -838,11 +956,15 @@ const styles = StyleSheet.create({
     marginRight: 5,
   },
   closeButton: {
-    backgroundColor: "#FF4C4C",
+    backgroundColor: "#ff4c4cff",
     padding: 10,
     borderRadius: 8,
-    flex: 1,
     marginLeft: 5,
+    width: "40%",
+    alignItems: "center",
+    justifyContent: "center",
+
+
   },
   addText: { color: "#fff", textAlign: "center", fontWeight: "bold" },
   closeText: { color: "#fff", textAlign: "center", fontWeight: "bold" },
@@ -923,7 +1045,7 @@ const styles = StyleSheet.create({
   threadPreview: { color: "#555", fontSize: 13, marginBottom: 4 },
   threadDate: { color: "#888", fontSize: 12 },
   threadBadge: {
-    backgroundColor: "#FF4C4C",
+    backgroundColor: "#ff4c4cff",
     paddingHorizontal: 8,
     paddingVertical: 6,
     borderRadius: 20,
@@ -935,7 +1057,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 15,
     padding: 15,
-    width: "90%",
+    width: "50%",
     maxHeight: "85%",
   },
   chatScroll: { flex: 1, marginBottom: 10 },
@@ -943,7 +1065,7 @@ const styles = StyleSheet.create({
     marginVertical: 6,
     padding: 10,
     borderRadius: 10,
-    maxWidth: "80%",
+    maxWidth: "40%",
   },
   adminBubble: {
     backgroundColor: "#DCF8C6",
@@ -989,7 +1111,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 15,
     padding: 20,
-    width: "90%",
+    width: "40%",
     elevation: 6,
   },
   detailTitle: {
@@ -1005,6 +1127,14 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginTop: 10,
   },
+  closeIconContainer: {
+  position: "absolute",
+  top: 10,
+  right: 10,
+  zIndex: 10,
+  color: "#ff704cff",
+  },
+
   actionBtn: { flex: 1, marginHorizontal: 5, paddingVertical: 10, borderRadius: 8 },
   actionText: { color: "#fff", textAlign: "center", fontWeight: "600" },
 });

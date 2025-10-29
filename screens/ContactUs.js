@@ -1,31 +1,33 @@
 // ContactUs.js (keyboard adaptive + floating scroll button)
 import { Ionicons } from "@expo/vector-icons";
 import {
-    addDoc,
-    collection,
-    doc,
-    getDoc,
-    onSnapshot,
-    orderBy,
-    query,
-    serverTimestamp,
-    setDoc,
-    updateDoc,
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
 } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import {
-    Alert,
-    Animated,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Animated,
+  KeyboardAvoidingView,
+  Linking,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { auth, db } from "../firebase";
+
 
 export default function ContactUs() {
   const user = auth.currentUser;
@@ -171,22 +173,56 @@ export default function ContactUs() {
           onScroll={handleScroll}
           scrollEventThrottle={16}
         >
-          <Text style={styles.title}>Contact Us</Text>
-          <Text style={styles.subtitle}>We're always happy to help.</Text>
-          <Text style={styles.subtitle}>Email: hello@softtechsolutionltd.com</Text>
-          <Text style={styles.subtitle}></Text>
-          <Text style={styles.subtitle}>Our Hotline Number:</Text>
-          <Text style={styles.subtitle}>+88017792-42162</Text>
-          <Text style={styles.subtitle}>+880193634-2128</Text>
-          <Text style={styles.subtitle}></Text>
-          <Text style={styles.subtitle}>Our Address:</Text>
-          <Text style={styles.subtitle}>
-            Khilkhet Nikunja 2, Road no.8, House no.9, Dhaka 1212
-          </Text>
-          <Text style={styles.subtitle}></Text>
-          <Text style={styles.subtitle}>Our Business Hours:</Text>
-          <Text style={styles.subtitle}>Sat-Thu, 10am to 6.30pm</Text>
+          {/* 🟢 Contact Card */}
+          <View style={styles.contactCard}>
+            <Text style={styles.title}>Contact Us</Text>
+            <Text style={styles.subtitle}>We’re always happy to help!</Text>
 
+            {/* Email */}
+            <View style={styles.contactRow}>
+              <Ionicons name="mail-outline" size={20} color="#00BFA6" />
+              <TouchableOpacity
+                onPress={() => Linking.openURL("mailto:vetplusanimalclinic2018@gmail.com")}
+              >
+                <Text style={styles.contactText}>Send us email.</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Facebook */}
+            <View style={styles.contactRow}>
+              <Ionicons name="logo-facebook" size={20} color="#00BFA6" />
+              <TouchableOpacity
+                onPress={() => Linking.openURL("https://www.facebook.com/share/1D1cTEbsiE/")}
+              >
+                <Text style={styles.contactText}>Visit our Facebook Page, Click me!</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Hotline */}
+            <View style={styles.contactRow}>
+              <Ionicons name="call-outline" size={20} color="#00BFA6" />
+              <Text style={styles.contactText}>0955 771 0460</Text>
+            </View>
+
+            {/* Address */}
+            <View style={styles.contactRow}>
+              <Ionicons name="location-outline" size={20} color="#00BFA6" />
+              <Text style={styles.contactText}>
+                National Road Brgy Lourdes, Cabanatuan City, Philippines, 3100
+              </Text>
+            </View>
+
+            {/* Hours */}
+            <View style={styles.contactRow}>
+              <Ionicons name="time-outline" size={20} color="#00BFA6" />
+              <Text style={styles.contactText}>Daily, 9am to 7:00pm</Text>
+            </View>
+
+            
+          </View>
+
+
+          {/* 💬 Chat Section */}
           <View style={{ marginTop: 20 }}>
             {messages.length > 0 ? (
               messages.map((m) => (
@@ -214,13 +250,9 @@ export default function ContactUs() {
 
         {/* Floating scroll-to-bottom button */}
         {showScrollButton && (
-          <Animated.View
-            style={[styles.scrollButton, { opacity: fadeAnim }]}
-          >
+          <Animated.View style={[styles.scrollButton, { opacity: fadeAnim }]}>
             <TouchableOpacity
-              onPress={() =>
-                scrollRef.current?.scrollToEnd({ animated: true })
-              }
+              onPress={() => scrollRef.current?.scrollToEnd({ animated: true })}
             >
               <Ionicons name="arrow-down-circle" size={40} color="#00BFA6" />
             </TouchableOpacity>
@@ -231,7 +263,7 @@ export default function ContactUs() {
         <View style={styles.inputRow}>
           <TextInput
             style={styles.input}
-            placeholder="Type your message..."
+            placeholder="Let us know your concern..."
             value={message}
             onChangeText={setMessage}
             multiline
@@ -252,25 +284,46 @@ export default function ContactUs() {
   );
 }
 
-// 💅 Styles
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: "#f9f9f9",
     padding: 15,
+  },
+  contactCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
+    marginBottom: 15,
   },
   title: {
     fontSize: 22,
     fontWeight: "700",
     color: "#00BFA6",
-    marginBottom: 4,
+    marginBottom: 8,
     textAlign: "center",
   },
   subtitle: {
-    color: "#666",
+    color: "#555",
     textAlign: "center",
-    marginBottom: 8,
+    marginBottom: 14,
   },
+  contactRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  contactText: {
+    color: "#333",
+    fontSize: 14,
+    marginLeft: 10,
+    flexShrink: 1,
+  },
+  // Existing chat styles (keep unchanged)
   bubble: {
     marginVertical: 6,
     padding: 10,

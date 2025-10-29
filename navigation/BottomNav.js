@@ -119,14 +119,13 @@ import RecordsScreen from "../screens/RecordsScreen";
           <>
             <Tab.Screen name="Home" component={HomeScreen} />
             <Tab.Screen name="Records" component={RecordsScreen} />
-            <Tab.Screen
-              name="Appointments"
-              component={(props) => (
+            <Tab.Screen name="Appointments">
+              {(props) => (
                 <ErrorBoundary>
                   <AppointmentsScreen {...props} />
                 </ErrorBoundary>
               )}
-            />
+            </Tab.Screen>
             <Tab.Screen name="Profile" component={ProfileScreen} />
           </>
         )}
