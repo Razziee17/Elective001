@@ -5,9 +5,7 @@ import {
   Dimensions,
   Image,
   StyleSheet,
-  Text,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View
 } from "react-native";
 
@@ -16,8 +14,10 @@ const { width } = Dimensions.get("window");
 export default function HomeHeader({
   onProfilePress,
   onNotificationPress,
-  isProfileScreen = false,
+  onGlobalMenuToggle, // ✅ add this
+  isProfileScreen,
 }) {
+
   const navigation = useNavigation();
   const [menuVisible, setMenuVisible] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, right: 20 });
@@ -25,15 +25,19 @@ export default function HomeHeader({
 
   // Measure hamburger icon position to drop menu under it
   const toggleMenu = () => {
-    if (!menuVisible) {
-      menuButtonRef.current?.measureInWindow((x, y, w, h) => {
-        setMenuPosition({ top: y + h + 8, right: width - (x + w) });
-        setMenuVisible(true);
-      });
-    } else {
-      setMenuVisible(false);
-    }
-  };
+  if (!menuVisible) {
+    // measure position of the menu button
+    menuButtonRef.current?.measureInWindow((x, y, w, h) => {
+      const position = { top: y + h + 8, right: 10 }; // adjust right offset if needed
+      setMenuVisible(true);
+      onGlobalMenuToggle?.({ visible: true, position }); // ✅ tell App.js to show overlay
+    });
+  } else {
+    setMenuVisible(false);
+    onGlobalMenuToggle?.({ visible: false }); // ✅ hide overlay
+  }
+};
+
 
   const handleNavigation = (route) => {
     setMenuVisible(false);
@@ -78,41 +82,58 @@ export default function HomeHeader({
       </View>
 
       {/* Fullscreen dark overlay + dropdown under icon */}
-      {menuVisible && (
+    {/* {menuVisible && (
+      <View
+        pointerEvents="box-none"
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 9999,
+        }}
+      >
         <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>
-          <View style={styles.overlay}>
-            <View style={[styles.menuContainer, { top: menuPosition.top, right: menuPosition.right }]}>
-              {[
-                { name: "About Us", route: "AboutUs" },
-                { name: "Contact Us", route: "ContactUs" },
-                { name: "FAQ", route: "FAQ" },
-                { name: "Logout", route: "Logout" },
-              ].map((item, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={[
-                    styles.menuItem,
-                    item.name === "Logout" && {
-                      borderTopWidth: 1,
-                      borderTopColor: "#eee",
-                    },
-                  ]}
-                  onPress={() => handleNavigation(item.route)}
-                >
-                  <Text
-                    style={[
-                      styles.menuText,
-                      item.name === "Logout" && { color: "red" },
-                    ]}
-                  >
-                    {item.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+          <View style={styles.overlay} />
+        </TouchableWithoutFeedback>
+
+        <View
+          style={[
+            styles.menuContainer,
+            { top: menuPosition.top, right: menuPosition.right },
+          ]}
+        >
+          {[
+            { name: "About Us", route: "AboutUs" },
+            { name: "Contact Us", route: "ContactUs" },
+            { name: "Logout", route: "Logout" },
+          ].map((item, index) => (
+            <TouchableOpacity
+              key={index}
+              style={[
+                styles.menuItem,
+                item.name === "Logout" && {
+                  borderTopWidth: 1,
+                  borderTopColor: "#eee",
+                },
+              ]}
+              onPress={() => handleNavigation(item.route)}
+            >
+              <Text
+                style={[
+                  styles.menuText,
+                  item.name === "Logout" && { color: "red" },
+                ]}
+              >
+                {item.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
             </View>
           </View>
-        </TouchableWithoutFeedback>
-      )}
+    )} */}
+
     </>
   );
 }
@@ -147,11 +168,13 @@ const styles = StyleSheet.create({
   iconBtn: {
     marginLeft: 12,
   },
+  
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.6)", // Dark transparent full-screen background
-    zIndex: 10,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    zIndex: 1000,
   },
+
   menuContainer: {
     position: "absolute",
     backgroundColor: "#fff",

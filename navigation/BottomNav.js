@@ -17,7 +17,8 @@ import RecordsScreen from "../screens/RecordsScreen";
 
   const Tab = createBottomTabNavigator();
 
-  export default function BottomNav() {
+  export default function BottomNav({ setGlobalMenu }) {
+ 
     const [userRole, setUserRole] = useState(null);
 
     useEffect(() => {
@@ -72,9 +73,10 @@ import RecordsScreen from "../screens/RecordsScreen";
                   onNotificationPress={() =>
                     Alert.alert("Notification", "Notification pressed!")
                   }
-                  onMenuPress={() => Alert.alert("Menu", "Menu pressed!")}
+                  onGlobalMenuToggle={setGlobalMenu}   // 👈 add this prop
                   isProfileScreen={isProfileScreen}
                 />
+
               );
             } else if (route.name === "Appointments" && userRole === "admin") {
               return (
@@ -89,21 +91,19 @@ import RecordsScreen from "../screens/RecordsScreen";
                   isProfileScreen={isProfileScreen}
                 />
               );
-            } else if (
-              route.name === "Appointments" ||
-              route.name === "Records"
-            ) {
+            } else if (route.name === "Appointments" || route.name === "Records") {
               return (
                 <HomeHeader
                   onProfilePress={handleProfilePress}
                   onNotificationPress={() =>
                     Alert.alert("Notification", "Notification pressed!")
                   }
-                  onMenuPress={() => Alert.alert("Menu", "Menu pressed!")}
+                  onGlobalMenuToggle={setGlobalMenu}   // ✅ FIXED — use the same prop
                   isProfileScreen={isProfileScreen}
                 />
               );
             }
+
             return null;
           },
           tabBarStyle: { backgroundColor: "#fff", borderTopColor: "#E0F7F4" },
