@@ -323,49 +323,82 @@ export default function AdminDashboard({ navigation }) {
     }
   };
 
-  // Approve / Decline appointment + auto message to user
-  const handleUpdateStatus = async (newStatus) => {
-    if (!selectedAppointment) return;
-    try {
-      const apptRef = doc(db, "appointments", selectedAppointment.id);
-      await updateDoc(apptRef, { status: newStatus });
+      // Approve / Decline appointment + auto message to user
+    const handleUpdateStatus = async (newStatus) => {
+      if (!selectedAppointment) return;
 
-      // Send auto message to user
-      // NOTE: your appointment doc stores the user's UID in the 'id' field (per screenshot).
-      const userId = selectedAppointment.id; // using the id field as user UID
-      if (userId) {
-        const threadRef = doc(db, "contact_threads", userId);
-        const messagesRef = collection(db, "contact_threads", userId, "messages");
-        await addDoc(messagesRef, {
-          sender: "admin",
-          message:
-            newStatus === "approved"
-              ? "✅ Your appointment has been approved. We look forward to seeing you!"
-              : "❌ Your appointment has been declined. Please contact the clinic for more info.",
-          createdAt: serverTimestamp(),
-          seenByUser: false,
-          seenByAdmin: true,
+      try {
+        let apptRef = doc(db, "appointments", selectedAppointment.id);
+        let apptSnap = await getDoc(apptRef);
+
+        // 🔍 If that doc doesn't exist, find it by "id" field instead
+        if (!apptSnap.exists()) {
+          const q = query(
+            collection(db, "appointments"),
+            where("id", "==", selectedAppointment.id)
+          );
+          const snap = await getDocs(q);
+
+          if (snap.empty) {
+            Alert.alert("Error", "This appointment no longer exists in Firestore.");
+            return;
+          }
+
+          apptRef = snap.docs[0].ref;
+          apptSnap = snap.docs[0];
+        }
+
+        // ✅ Update appointment status
+        await updateDoc(apptRef, {
+          status: newStatus,
+          updatedAt: serverTimestamp(),
         });
 
-        // update thread summary metadata
-        await setDoc(threadRef, {
-          lastMessage:
-            newStatus === "approved"
-              ? "✅ Appointment approved"
-              : "❌ Appointment declined",
-          lastSender: "admin",
-          updatedAt: serverTimestamp(),
-          lastSeenByAdmin: true,
-          lastSeenByUser: false,
-        }, { merge: true });
-      }
+        // 💬 Send auto message to user
+        const userId =
+          selectedAppointment.userId ||
+          selectedAppointment.ownerId ||
+          selectedAppointment.uid ||
+          selectedAppointment.id; // fallback
 
-      setSelectedAppointment(null);
-    } catch (err) {
-      console.error("Error updating appointment:", err);
-      Alert.alert("Error", "Failed to update appointment status.");
-    }
-  };
+        if (userId) {
+          const threadRef = doc(db, "contact_threads", userId);
+          const messagesRef = collection(db, "contact_threads", userId, "messages");
+
+          await addDoc(messagesRef, {
+            sender: "admin",
+            message:
+              newStatus === "approved"
+                ? "✅ Your appointment has been approved. We look forward to seeing you!"
+                : "❌ Your appointment has been declined. Please contact the clinic for more info.",
+            createdAt: serverTimestamp(),
+            seenByUser: false,
+            seenByAdmin: true,
+          });
+
+          await setDoc(
+            threadRef,
+            {
+              lastMessage:
+                newStatus === "approved"
+                  ? "✅ Appointment approved"
+                  : "❌ Appointment declined",
+              lastSender: "admin",
+              updatedAt: serverTimestamp(),
+              lastSeenByAdmin: true,
+              lastSeenByUser: false,
+            },
+            { merge: true }
+          );
+        }
+
+        Alert.alert("Success", `Appointment ${newStatus}.`);
+        setSelectedAppointment(null);
+      } catch (err) {
+        console.error("Error updating appointment:", err);
+        Alert.alert("Error", err.message || "Failed to update appointment status.");
+      }
+    };
 
   // Helper to open thread modal and optionally focus a specific thread
   const openThreadsModal = (threadId = null) => {

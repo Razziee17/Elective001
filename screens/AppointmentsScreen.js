@@ -8,7 +8,7 @@ import {
   serverTimestamp,
   where,
 } from "firebase/firestore";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -18,13 +18,12 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
   TouchableWithoutFeedback,
+  View,
 } from "react-native";
-import uuid from "react-native-uuid";
 import { useAppointments } from "../context/AppointmentContext";
 import { useUser } from "../context/UserContext";
-import { db, auth } from "../firebase";
+import { auth, db } from "../firebase";
 
 export default function AppointmentsScreen() {
   const appointmentsData = useAppointments();
@@ -244,14 +243,14 @@ export default function AppointmentsScreen() {
     const monthNum = monthMap[dateParts[0]] || "01";
     const formattedDate = `${dateParts[2]}-${monthNum}-${dateParts[1].padStart(2, "0")}`;
     const ageNum = petAgeRaw ? parseInt(petAgeRaw, 10) : 0;
-
+      
+    // Prepare appointment data (without a manual ID)
     const newAppointment = {
-      id: uuid.v4(),
       petName,
       animal: selectedAnimal,
       breed: selectedBreed,
       age: ageNum,
-      ageUnit: petAgeUnit, // Already correct — saved as "years" or "months"
+      ageUnit: petAgeUnit,
       service: selectedService,
       date: formattedDate,
       time: selectedTime,
@@ -266,6 +265,7 @@ export default function AppointmentsScreen() {
     };
 
     try {
+      // Check for slot conflicts
       const conflictQuery = query(
         collection(db, "appointments"),
         where("date", "==", formattedDate),
@@ -277,8 +277,12 @@ export default function AppointmentsScreen() {
         return;
       }
 
-      await addDoc(collection(db, "appointments"), newAppointment);
-      if (typeof addAppointment === "function") addAppointment(newAppointment);
+      // ✅ Let Firestore create the document, then get its ID
+      const docRef = await addDoc(collection(db, "appointments"), newAppointment);
+      const savedAppt = { id: docRef.id, ...newAppointment };
+
+      // ✅ Update local state with the Firestore-generated ID
+      if (typeof addAppointment === "function") addAppointment(savedAppt);
 
       Alert.alert("Success", `Appointment booked for ${petName} on ${formattedDate} at ${selectedTime}.`);
 
@@ -297,6 +301,7 @@ export default function AppointmentsScreen() {
       Alert.alert("Error", "Failed to book appointment.");
     }
   };
+
 
   const getAvailableSlots = () => {
     if (!selectedDate) return timeSlots.map((time) => ({ time, booked: false }));

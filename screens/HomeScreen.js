@@ -234,7 +234,7 @@ const openBreeds = (animal, breeds) => {
                   }}
                 >
                   <Image
-                    source={require("../assets/dog.png")}
+                    source={require("../assets/announcement.jpg")}
                     style={styles.announcementImage}
                   />
                   <View style={{ flex: 1 }}>

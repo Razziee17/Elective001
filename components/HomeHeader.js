@@ -67,9 +67,9 @@ export default function HomeHeader({
         />
 
         <View style={styles.rightIcons}>
-          <TouchableOpacity onPress={onNotificationPress} style={styles.iconBtn}>
-            <Ionicons name="notifications-outline" size={24} color="#00BFA6" />
-          </TouchableOpacity>
+          {/* <TouchableOpacity onPress={onNotificationPress} style={styles.iconBtn}>
+            <Ionicons name="notifications-outline" size={24} color="#f8f8f8ff" />
+          </TouchableOpacity> */}
 
           <TouchableOpacity
             ref={menuButtonRef}
